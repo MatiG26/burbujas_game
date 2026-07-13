@@ -934,6 +934,7 @@ function App() {
             fullscreen
             topDonors={topDonors}
             gifts={enabledGiftConfigs}
+            recentEvents={recentEvents}
             audioEnabled={audioEnabled}
             onToggleAudio={() => {
               void toggleAudio()

@@ -1,4 +1,5 @@
-import type { CanvasSize, GiftConfig, LeaderboardEntry } from '../types/game'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CanvasSize, DonationEvent, GiftConfig, LeaderboardEntry } from '../types/game'
 
 const extraDonationEntries = [
   {
@@ -22,9 +23,16 @@ interface GameCanvasProps {
   fullscreen?: boolean
   topDonors?: LeaderboardEntry[]
   gifts?: GiftConfig[]
+  recentEvents?: DonationEvent[]
   audioEnabled?: boolean
   onToggleAudio?: () => void
   onTopDonorsSecretTap?: () => void
+}
+
+interface SpecialDonorOverlay {
+  key: string
+  username: string
+  action: 'confetti' | 'boxing'
 }
 
 function formatValue(value: number) {
@@ -71,11 +79,62 @@ function getTopDonorCardStyles(index: number) {
   }
 }
 
-export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = false, topDonors = [], gifts = [], audioEnabled = false, onToggleAudio, onTopDonorsSecretTap }: GameCanvasProps) {
+export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = false, topDonors = [], gifts = [], recentEvents = [], audioEnabled = false, onToggleAudio, onTopDonorsSecretTap }: GameCanvasProps) {
+  const [specialDonorOverlay, setSpecialDonorOverlay] = useState<SpecialDonorOverlay | null>(null)
+  const lastSpecialOverlayKeyRef = useRef<string | null>(null)
+  const latestSpecialEvent = useMemo(
+    () => recentEvents.find((event) => event.action === 'confetti' || event.action === 'boxing') ?? null,
+    [recentEvents],
+  )
+
+  useEffect(() => {
+    if (!fullscreen || !latestSpecialEvent) {
+      return
+    }
+
+    const normalizedUsername = latestSpecialEvent.username.trim()
+    if (!normalizedUsername) {
+      return
+    }
+
+    const overlayKey = `${latestSpecialEvent.timestamp}-${latestSpecialEvent.action}-${normalizedUsername}-${latestSpecialEvent.quantity}`
+    if (overlayKey === lastSpecialOverlayKeyRef.current) {
+      return
+    }
+
+    lastSpecialOverlayKeyRef.current = overlayKey
+    setSpecialDonorOverlay({
+      key: overlayKey,
+      username: normalizedUsername,
+      action: latestSpecialEvent.action,
+    })
+
+    const timeoutId = window.setTimeout(() => {
+      setSpecialDonorOverlay((current) => (current?.key === overlayKey ? null : current))
+    }, 2000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [fullscreen, latestSpecialEvent])
+
   if (fullscreen) {
     return (
       <section className="relative flex h-screen flex-col overflow-hidden bg-[linear-gradient(180deg,#0d6d82_0%,#09536d_45%,#083a57_100%)] px-3 py-3 sm:px-4">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(190,242,255,0.22),transparent_42%),radial-gradient(circle_at_bottom,rgba(12,74,110,0.32),transparent_45%)]" />
+
+        {specialDonorOverlay ? (
+          <div className="pointer-events-none absolute inset-x-0 top-[22%] z-30 flex justify-center px-16 sm:top-[18%] sm:px-24">
+            <div className="max-w-full rounded-full border border-white/18 bg-[rgba(7,17,29,0.82)] px-5 py-3 text-center shadow-[0_16px_42px_rgba(0,0,0,0.34)]">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-100/78">
+                {specialDonorOverlay.action === 'confetti' ? 'Confeti especial' : 'Guantes de boxeo'}
+              </p>
+              <strong className="mt-1 block truncate text-xl font-black text-white sm:text-2xl">
+                {specialDonorOverlay.username}
+              </strong>
+            </div>
+          </div>
+        ) : null}
 
         <div className="relative z-10 shrink-0">
           <div className="grid gap-3">
@@ -204,7 +263,7 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
         </div>
 
         <div className="pointer-events-none absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-4">
-          <div className="flex flex-col items-start gap-2 rounded-3xl border border-white/8 bg-slate-900/16 px-3 py-3 text-white backdrop-blur-[6px]">
+          <div className="flex flex-col items-start gap-2 rounded-3xl border border-white/8 bg-slate-900/8 px-3 py-3 text-white">
             {extraDonationEntries.map((entry) => (
               <article
                 key={entry.id}

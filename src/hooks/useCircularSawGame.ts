@@ -383,20 +383,6 @@ function drawSaw(
   ctx.textAlign = 'center'
   ctx.fillText(entity.isPrimary ? entity.username : `${entity.username} II`, 0, -bodyRadius * 0.72)
 
-  if (entity.specialMode === 'confetti' && entity.specialPhase === 'showcase' && specialActive) {
-    const pulse = 0.72 + (Math.sin(now / 140) + 1) * 0.14
-    const showcaseName = entity.isPrimary ? entity.username : `${entity.username} II`
-
-    ctx.save()
-    ctx.shadowBlur = 24
-    ctx.shadowColor = 'rgba(250, 204, 21, 0.9)'
-    ctx.fillStyle = `rgba(255, 220, 120, ${pulse})`
-    ctx.font = `900 ${Math.max(20, bodyRadius * 0.34)}px sans-serif`
-    ctx.textBaseline = 'middle'
-    ctx.fillText(showcaseName, 0, bodyRadius + Math.max(42, bodyRadius * 0.78))
-    ctx.restore()
-  }
-
   if (entity.entityType === 'comment') {
     ctx.fillStyle = 'rgba(255,255,255,0.96)'
     ctx.font = `700 ${Math.max(10, bodyRadius * 0.18)}px sans-serif`
@@ -548,25 +534,6 @@ function drawScreenOverlayEffects(
       ctx.restore()
     }
 
-    const label = effect.donorName.trim()
-    if (effect.showDonorName && label) {
-      const labelY = size.height * 0.16
-      const labelAlpha = 1 - clamp((progress - 0.82) / 0.18, 0, 1)
-
-      ctx.save()
-      ctx.globalAlpha = overlayAlpha * labelAlpha
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.font = `900 ${Math.max(28, size.width * 0.038)}px system-ui`
-      ctx.lineWidth = 10
-      ctx.strokeStyle = 'rgba(20, 10, 8, 0.55)'
-      ctx.shadowColor = 'rgba(255, 245, 214, 0.95)'
-      ctx.shadowBlur = 24
-      ctx.strokeText(label, centerX, labelY)
-      ctx.fillStyle = 'rgba(255, 248, 228, 0.98)'
-      ctx.fillText(label, centerX, labelY)
-      ctx.restore()
-    }
   }
 }
 
@@ -860,7 +827,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
       id: `boxing-name-${playerId}-${now}`,
       type: 'boxing-glove',
       donorName,
-      showDonorName: true,
+      showDonorName: false,
       startedAt: now,
       duration: 2000,
     })
