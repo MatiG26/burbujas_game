@@ -176,6 +176,26 @@ function finishSpecialMode(entity: SawEntity) {
   entity.vy += (Math.random() - 0.5) * 180
 }
 
+function normalizeImportedEntity(entity: SawEntity) {
+  const nextEntity = { ...entity }
+
+  // Los timestamps de modos especiales vienen del reloj local del dispositivo origen.
+  // En otro dispositivo pueden dejar la animacion congelada, asi que se normalizan
+  // a una burbuja comun manteniendo posicion, HP y avatar.
+  if (nextEntity.specialMode) {
+    nextEntity.specialMode = undefined
+    nextEntity.specialPhase = undefined
+    nextEntity.specialPhaseStartedAt = undefined
+    nextEntity.specialModeUntil = undefined
+    nextEntity.invulnerableUntil = undefined
+    nextEntity.vx = nextEntity.vx || (Math.random() - 0.5) * 180
+    nextEntity.vy = nextEntity.vy || (Math.random() - 0.5) * 180
+  }
+
+  nextEntity.isTouching = false
+  return nextEntity
+}
+
 function getConfettiSpinDuration(entity: SawEntity) {
   return clamp(1200 + entity.radius * 4.4, 1200, 2400)
 }
@@ -686,7 +706,10 @@ export function useCircularSawGame(): UseCircularSawGameResult {
   }
 
   function applySharedGameState(state: SharedGameState) {
-    const nextEntities = new Map(state.entities.map((entity) => [entity.id, { ...entity }]))
+    const nextEntities = new Map(state.entities.map((entity) => {
+      const normalizedEntity = normalizeImportedEntity(entity)
+      return [normalizedEntity.id, normalizedEntity]
+    }))
     const nextLeaderboard = new Map(state.leaderboard.map((entry) => [entry.id, { ...entry }]))
 
     for (const entry of nextLeaderboard.values()) {

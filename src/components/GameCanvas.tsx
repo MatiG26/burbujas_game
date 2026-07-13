@@ -204,13 +204,13 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
         </div>
 
         <div className="pointer-events-none absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-4">
-          <div className="flex flex-col items-start gap-2 rounded-3xl bg-slate-700/30 px-3 py-3 text-white backdrop-blur-sm">
+          <div className="flex flex-col items-start gap-2 rounded-3xl border border-white/8 bg-slate-900/16 px-3 py-3 text-white backdrop-blur-[6px]">
             {extraDonationEntries.map((entry) => (
               <article
                 key={entry.id}
                 className="flex w-full items-center justify-start gap-2 text-left text-shadow-[0_2px_10px_rgba(0,0,0,0.45)]"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/10 text-[9px] font-black uppercase tracking-[0.16em] text-sky-100">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/6 text-[9px] font-black uppercase tracking-[0.16em] text-sky-100">
                   {entry.icon === 'heart' ? (
                     <svg viewBox="0 0 24 24" className="h-5 w-5 fill-rose-300" aria-hidden="true">
                       <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35Z" />
@@ -224,7 +224,7 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100/80">{entry.title}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100/72">{entry.title}</p>
                   <span className="text-sm font-black text-orange-200">{entry.value}</span>
                 </div>
               </article>
