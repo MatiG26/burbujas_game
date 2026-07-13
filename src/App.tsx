@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DonationControls } from './components/DonationControls'
+import { BottomTabMenu } from './components/BottomTabMenu'
 import { GameCanvas } from './components/GameCanvas'
 import { GiftMenuStrip } from './components/GiftMenuStrip'
 import { Leaderboard } from './components/Leaderboard'
@@ -8,8 +9,10 @@ import { defaultGiftConfigs } from './game/constants'
 import { useCircularSawGame } from './hooks/useCircularSawGame'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { useTikTokLive } from './hooks/useTikTokLive'
-import { appSyncChannelName, getSupabaseClient } from './lib/supabase'
-import type { DonationEvent, GiftConfig, LiveGiftEvent, SharedAppMessage, SharedAppState } from './types/game'
+import { appSyncChannelName, getLocalBridgeWebSocketUrl, getSupabaseClient, supabaseRealtimeEnabled } from './lib/supabase'
+import type { AppSyncTransportMessage, DonationEvent, GiftConfig, LiveGiftEvent, LocalBridgeSocketMessage, SharedAppMessage, SharedAppState } from './types/game'
+import type { AdminSection } from './components/DonationControls'
+import { TabIcon } from './components/DonationControls'
 
 const legacyRoseImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/rose.png'
 const currentRoseImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/eba3a9bb85c33e017f3648eaf88d7189~tplv-obj.webp'
@@ -116,6 +119,7 @@ function buildManualDonationEvent(
 
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => getCurrentRoute())
+  const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>('connect')
   const [username, setUsername] = useState('StreamerPro')
   const [avatarUrl, setAvatarUrl] = useState(
     'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80',
@@ -127,6 +131,7 @@ function App() {
   )
   const [instanceId] = useState(() => crypto.randomUUID())
   const syncChannelRef = useRef<RealtimeChannel | null>(null)
+  const syncSocketRef = useRef<WebSocket | null>(null)
   const sharedStateRef = useRef<SharedAppState | null>(null)
   const skippedSharedStateRef = useRef<string | null>(null)
   const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, audioEnabled, enableAudio, donate } =
@@ -310,16 +315,29 @@ function App() {
   }, [sharedAppState])
 
   const broadcastSharedMessage = useCallback((message: SharedAppMessage) => {
-    const channel = syncChannelRef.current
-    if (!channel) {
+    if (supabaseRealtimeEnabled) {
+      const channel = syncChannelRef.current
+      if (!channel) {
+        return
+      }
+
+      void channel.send({
+        type: 'broadcast',
+        event: 'sync',
+        payload: message,
+      })
       return
     }
 
-    void channel.send({
-      type: 'broadcast',
-      event: 'sync',
+    if (syncSocketRef.current?.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    const envelope: AppSyncTransportMessage = {
+      type: 'app-sync',
       payload: message,
-    })
+    }
+    syncSocketRef.current.send(JSON.stringify(envelope))
   }, [])
 
   const applySharedState = useCallback((state: SharedAppState) => {
@@ -336,6 +354,59 @@ function App() {
 
   useEffect(() => {
     const supabase = getSupabaseClient()
+    if (!supabaseRealtimeEnabled) {
+      const socket = new WebSocket(getLocalBridgeWebSocketUrl())
+      syncSocketRef.current = socket
+
+      socket.addEventListener('open', () => {
+        broadcastSharedMessage({
+          kind: 'state-request',
+          sourceId: instanceId,
+        })
+      })
+
+      socket.addEventListener('message', (messageEvent) => {
+        const message = JSON.parse(String(messageEvent.data)) as LocalBridgeSocketMessage
+        if (message.type !== 'app-sync') {
+          return
+        }
+
+        const payload = message.payload
+        if (payload.sourceId === instanceId) {
+          return
+        }
+
+        if (payload.kind === 'manual-donation') {
+          donate(payload.event)
+          return
+        }
+
+        if (payload.kind === 'state-request') {
+          if (!sharedStateRef.current) {
+            return
+          }
+
+          broadcastSharedMessage({
+            kind: 'state-snapshot',
+            sourceId: instanceId,
+            state: sharedStateRef.current,
+          })
+          return
+        }
+
+        applySharedState(payload.state)
+      })
+
+      socket.addEventListener('close', () => {
+        syncSocketRef.current = null
+      })
+
+      return () => {
+        syncSocketRef.current?.close()
+        syncSocketRef.current = null
+      }
+    }
+
     if (!supabase) {
       return
     }
@@ -388,7 +459,7 @@ function App() {
   }, [applySharedState, broadcastSharedMessage, donate, instanceId])
 
   useEffect(() => {
-    if (!syncChannelRef.current) {
+    if (!syncChannelRef.current && syncSocketRef.current?.readyState !== WebSocket.OPEN) {
       return
     }
 
@@ -475,23 +546,31 @@ function App() {
 
   if (route === 'home') {
     return (
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top,#2b6d86_0%,#0b3c53_48%,#062537_100%)] px-4 py-6 text-white sm:px-6 lg:px-8">
-        <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-5xl items-center justify-center">
-          <section className="w-full rounded-[36px] border border-white/10 bg-slate-950/35 p-6 shadow-[0_30px_100px_rgba(2,12,27,0.45)] backdrop-blur-xl sm:p-8 lg:p-10">
-            <p className="text-xs uppercase tracking-[0.38em] text-cyan-100/70">Circular Saw</p>
-            <h1 className="mt-3 text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top,#79e6f2_0%,rgba(121,230,242,0)_24%),linear-gradient(180deg,#114a60_0%,#0a293a_52%,#05131d_100%)] px-4 py-5 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-6xl items-center justify-center">
+          <section className="w-full overflow-hidden rounded-[38px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.1),rgba(2,6,23,0.48))] p-6 shadow-[0_30px_100px_rgba(2,12,27,0.45)] backdrop-blur-xl sm:p-8 lg:p-10">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-center">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.38em] text-cyan-100/70">Circular Saw</p>
+                <h1 className="mt-3 text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
               Elige a donde entrar
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-cyan-50/78 sm:text-base">
+                </h1>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-cyan-50/78 sm:text-base">
               Usa batalla para abrir el campo limpio del juego y config para conectar TikTok,
               editar regalos y lanzar pruebas manuales.
-            </p>
+                </p>
 
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                <div className="mt-6 flex flex-wrap gap-3 text-sm text-cyan-50/78">
+                  <span className="rounded-full border border-white/10 bg-white/8 px-4 py-2">Widget para OBS</span>
+                  <span className="rounded-full border border-white/10 bg-white/8 px-4 py-2">Control desde celular</span>
+                  <span className="rounded-full border border-white/10 bg-white/8 px-4 py-2">TikTok Live</span>
+                </div>
+
+                <div className="mt-8 grid gap-4 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => navigateTo('/batalla')}
-                className="rounded-[28px] border border-cyan-100/20 bg-[linear-gradient(160deg,rgba(94,234,212,0.26),rgba(8,145,178,0.2))] px-6 py-8 text-left shadow-[0_20px_60px_rgba(8,145,178,0.2)] transition hover:border-cyan-100/35 hover:bg-[linear-gradient(160deg,rgba(94,234,212,0.34),rgba(8,145,178,0.28))]"
+                className="rounded-[30px] border border-cyan-100/20 bg-[linear-gradient(160deg,rgba(94,234,212,0.26),rgba(8,145,178,0.2))] px-6 py-8 text-left shadow-[0_20px_60px_rgba(8,145,178,0.2)] transition hover:border-cyan-100/35 hover:bg-[linear-gradient(160deg,rgba(94,234,212,0.34),rgba(8,145,178,0.28))]"
               >
                 <span className="block text-xs uppercase tracking-[0.32em] text-cyan-100/70">Ruta</span>
                 <strong className="mt-3 block text-3xl font-black text-white">Batalla</strong>
@@ -503,17 +582,17 @@ function App() {
               <button
                 type="button"
                 onClick={() => navigateTo('/config')}
-                className="rounded-[28px] border border-white/10 bg-[linear-gradient(160deg,rgba(255,255,255,0.12),rgba(15,23,42,0.38))] px-6 py-8 text-left shadow-[0_20px_60px_rgba(15,23,42,0.28)] transition hover:border-white/20 hover:bg-[linear-gradient(160deg,rgba(255,255,255,0.18),rgba(15,23,42,0.48))]"
+                className="rounded-[30px] border border-white/10 bg-[linear-gradient(160deg,rgba(255,255,255,0.12),rgba(15,23,42,0.38))] px-6 py-8 text-left shadow-[0_20px_60px_rgba(15,23,42,0.28)] transition hover:border-white/20 hover:bg-[linear-gradient(160deg,rgba(255,255,255,0.18),rgba(15,23,42,0.48))]"
               >
                 <span className="block text-xs uppercase tracking-[0.32em] text-slate-200/70">Ruta</span>
-                <strong className="mt-3 block text-3xl font-black text-white">Config</strong>
+                <strong className="mt-3 block text-3xl font-black text-white">Administrar</strong>
                 <span className="mt-3 block text-sm leading-6 text-slate-200/78">
-                  Entra al panel de control en /config.
+                  Entra al panel de administracion en /config.
                 </span>
               </button>
-            </div>
+                </div>
 
-            <div className="mt-8 grid gap-3 text-xs text-slate-200/80 sm:grid-cols-2">
+                <div className="mt-8 grid gap-3 text-xs text-slate-200/80 sm:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
                 <span className="block uppercase tracking-[0.24em] text-slate-300/55">Batalla</span>
                 <strong className="mt-1 block text-sm text-white">{battleUrl}</strong>
@@ -521,6 +600,35 @@ function App() {
               <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
                 <span className="block uppercase tracking-[0.24em] text-slate-300/55">Config</span>
                 <strong className="mt-1 block text-sm text-white">{configUrl}</strong>
+              </div>
+                </div>
+              </div>
+
+              <div className="rounded-[30px] border border-white/10 bg-slate-950/22 p-5">
+                <p className="text-[10px] uppercase tracking-[0.28em] text-slate-200/70">Flujo recomendado</p>
+                <div className="mt-4 space-y-3 text-sm text-slate-100/88">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-300/14 text-xs font-black text-cyan-100">1</span>
+                    <div>
+                      <strong className="block text-white">Abre Administrar</strong>
+                      <span className="text-slate-300/78">Conecta el live y ajusta premios.</span>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-300/14 text-xs font-black text-emerald-100">2</span>
+                    <div>
+                      <strong className="block text-white">Lanza Batalla</strong>
+                      <span className="text-slate-300/78">Muestra el campo limpio en PC u OBS.</span>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-orange-300/14 text-xs font-black text-orange-100">3</span>
+                    <div>
+                      <strong className="block text-white">Prueba o transmite</strong>
+                      <span className="text-slate-300/78">Simula regalos o espera los eventos reales.</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -530,87 +638,78 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#19324f_0%,#09111c_52%,#05070b_100%)] px-4 py-4 text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1800px] gap-4">
-        <section className="rounded-[28px] border border-white/10 bg-slate-950/50 p-5 shadow-[0_24px_80px_rgba(2,6,23,0.45)] backdrop-blur-xl">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-sky-200/75">Panel separado</p>
-              <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
-                Configuracion del widget
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300/80">
-                Usa esta ruta para conectar TikTok, editar premios y lanzar donaciones manuales.
-                El widget limpio para OBS o navegador queda en la ruta /batalla.
-              </p>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.22),transparent_24%),linear-gradient(180deg,#0d3042_0%,#071825_48%,#041019_100%)] px-3 py-3 text-slate-100 sm:px-5 sm:py-4 lg:px-8">
+      <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1800px] gap-4 sm:min-h-[calc(100vh-2.5rem)]">
+        <section className="sticky top-0 z-30 overflow-hidden rounded-[22px] border border-white/10 bg-[linear-gradient(150deg,rgba(255,255,255,0.06),rgba(2,6,23,0.72))] px-3 py-2 shadow-[0_24px_80px_rgba(2,6,23,0.35)] backdrop-blur-xl sm:px-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-3">
+              <p className="text-[10px] uppercase tracking-[0.34em] text-sky-200/75">Administrar</p>
+              <span className="hidden text-sm text-slate-300/78 sm:inline">/config administra y /batalla muestra el widget.</span>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => navigateTo('/batalla')}
-                className="rounded-2xl border border-emerald-300/25 bg-emerald-400/15 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400/25"
+                className="rounded-full border border-emerald-300/25 bg-emerald-400/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400/25"
               >
-                Abrir batalla
+                Batalla
               </button>
               <button
                 type="button"
                 onClick={() => navigateTo('/')}
-                className="rounded-2xl border border-cyan-200/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-300/20"
+                className="rounded-full border border-cyan-200/20 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-300/20"
               >
-                Ir al inicio
+                Inicio
               </button>
               <button
                 type="button"
                 onClick={() => navigateTo('/config')}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
               >
-                Estas en /config
+                Administrar
               </button>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 text-xs text-slate-300/75 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3">
-              <span className="block uppercase tracking-[0.24em] text-slate-500">Batalla</span>
-              <strong className="mt-1 block text-sm text-white">{battleUrl}</strong>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3">
-              <span className="block uppercase tracking-[0.24em] text-slate-500">Config</span>
-              <strong className="mt-1 block text-sm text-white">{configUrl}</strong>
             </div>
           </div>
         </section>
 
-        <GiftMenuStrip
-          gifts={enabledGiftConfigs}
-          disabled={!canTriggerManualGift}
-          onGiftSelect={triggerManualDonation}
+        <DonationControls
+          username={username}
+          avatarUrl={avatarUrl}
+          tiktokLiveId={tiktokLiveId}
+          bridgeUrl={bridgeUrl}
+          presets={normalizedGiftConfigs}
+          activeSaws={activeSaws}
+          recentEvents={recentEvents}
+          connectionStatus={status}
+          onUsernameChange={setUsername}
+          onAvatarUrlChange={setAvatarUrl}
+          onTikTokLiveIdChange={setTikTokLiveId}
+          onGiftConfigChange={updateGiftConfig}
+          onAddGiftConfig={addGiftConfig}
+          onConnectTikTok={connect}
+          onDisconnectTikTok={disconnect}
+          activeSection={activeAdminSection}
+          simulationPanel={(
+            <GiftMenuStrip
+              gifts={enabledGiftConfigs}
+              disabled={!canTriggerManualGift}
+              onGiftSelect={triggerManualDonation}
+            />
+          )}
+          leaderboardPanel={<Leaderboard entries={leaderboard} />}
         />
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_360px] xl:grid-cols-[minmax(0,1.75fr)_380px]">
-          <section className="grid min-h-0 gap-4">
-            <DonationControls
-              username={username}
-              avatarUrl={avatarUrl}
-              tiktokLiveId={tiktokLiveId}
-              bridgeUrl={bridgeUrl}
-              presets={normalizedGiftConfigs}
-              activeSaws={activeSaws}
-              recentEvents={recentEvents}
-              connectionStatus={status}
-              onUsernameChange={setUsername}
-              onAvatarUrlChange={setAvatarUrl}
-              onTikTokLiveIdChange={setTikTokLiveId}
-              onGiftConfigChange={updateGiftConfig}
-              onAddGiftConfig={addGiftConfig}
-              onConnectTikTok={connect}
-              onDisconnectTikTok={disconnect}
-            />
-          </section>
-
-          <Leaderboard entries={leaderboard} />
-        </div>
+        <BottomTabMenu
+          items={[
+            { id: 'connect', label: 'Conectar', icon: <TabIcon section="connect" /> },
+            { id: 'simulate', label: 'Simular', icon: <TabIcon section="simulate" /> },
+            { id: 'gifts', label: 'Premios', icon: <TabIcon section="gifts" /> },
+            { id: 'monitor', label: 'Monitorear', icon: <TabIcon section="monitor" /> },
+          ]}
+          activeItemId={activeAdminSection}
+          onSelect={setActiveAdminSection}
+        />
       </div>
     </main>
   )

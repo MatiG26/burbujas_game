@@ -148,6 +148,22 @@ export type SharedAppMessage =
     state: SharedAppState
   }
 
+export interface BridgeCommandTransportMessage {
+  type: 'bridge-command'
+  payload: BridgeCommandMessage
+}
+
+export interface AppSyncTransportMessage {
+  type: 'app-sync'
+  payload: SharedAppMessage
+}
+
+export type LocalBridgeSocketMessage =
+  | BridgeGiftMessage
+  | BridgeStatusMessage
+  | BridgeCommandTransportMessage
+  | AppSyncTransportMessage
+
 export interface GiftApplicationResult {
   applied: boolean
   reason?: string

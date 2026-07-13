@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm:dev:client\" \"npm:dev:bridge\"",
-    "dev:client": "vite",
+    "dev:client": "vite --host 0.0.0.0",
     "dev:bridge": "tsx server/tiktokBridge.ts",
     "build": "tsc -b && vite build",
     "build:bridge": "tsc -p tsconfig.node.json",

@@ -1,11 +1,13 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { useEffect, useRef, useState } from 'react'
-import { bridgeChannelName, bridgeTransportLabel, getSupabaseClient, supabaseRealtimeEnabled } from '../lib/supabase'
+import { bridgeChannelName, bridgeTransportLabel, getLocalBridgeWebSocketUrl, getSupabaseClient, supabaseRealtimeEnabled } from '../lib/supabase'
 import type {
+  BridgeCommandTransportMessage,
   BridgeCommandMessage,
   BridgeGiftMessage,
   BridgeStatusMessage,
   LiveGiftEvent,
+  LocalBridgeSocketMessage,
   TikTokBridgeStatus,
 } from '../types/game'
 
@@ -32,6 +34,7 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
   const [status, setStatus] = useState<TikTokBridgeStatus>(idleStatus)
   const [isSocketReady, setIsSocketReady] = useState(false)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const pendingConnectRef = useRef<string | null>(null)
   const onGiftRef = useRef(onGift)
@@ -41,7 +44,7 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
   }, [onGift])
 
   function sendConnectRequest(targetUniqueId: string) {
-    if (!targetUniqueId.trim() || !channelRef.current) {
+    if (!targetUniqueId.trim()) {
       pendingConnectRef.current = targetUniqueId.trim() || null
       return
     }
@@ -50,25 +53,35 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
       type: 'connect',
       payload: { uniqueId: targetUniqueId.trim() },
     }
-    void channelRef.current.send({
-      type: 'broadcast',
-      event: 'bridge-command',
-      payload: message,
-    })
+
+    if (supabaseRealtimeEnabled) {
+      if (!channelRef.current) {
+        pendingConnectRef.current = targetUniqueId.trim() || null
+        return
+      }
+
+      void channelRef.current.send({
+        type: 'broadcast',
+        event: 'bridge-command',
+        payload: message,
+      })
+    } else {
+      if (socketRef.current?.readyState !== WebSocket.OPEN) {
+        pendingConnectRef.current = targetUniqueId.trim() || null
+        return
+      }
+
+      const envelope: BridgeCommandTransportMessage = {
+        type: 'bridge-command',
+        payload: message,
+      }
+      socketRef.current.send(JSON.stringify(envelope))
+    }
     pendingConnectRef.current = null
   }
 
   useEffect(() => {
     const supabase = getSupabaseClient()
-    if (!supabase) {
-      setStatus({
-        state: 'error',
-        uniqueId: '',
-        message: 'Faltan VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY',
-      })
-      setIsSocketReady(false)
-      return
-    }
 
     let isDisposed = false
 
@@ -85,6 +98,67 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
 
     const connectSocket = () => {
       if (isDisposed) {
+        return
+      }
+
+      if (!supabaseRealtimeEnabled) {
+        const socket = new WebSocket(getLocalBridgeWebSocketUrl())
+        socketRef.current = socket
+
+        socket.addEventListener('open', () => {
+          setIsSocketReady(true)
+          setStatus((current) => ({
+            ...current,
+            message: current.state === 'connected' ? current.message : 'Bridge local listo',
+          }))
+
+          if (pendingConnectRef.current) {
+            sendConnectRequest(pendingConnectRef.current)
+          }
+        })
+
+        socket.addEventListener('error', () => {
+          setIsSocketReady(false)
+          setStatus((current) => ({
+            ...current,
+            state: current.state === 'connected' ? current.state : 'idle',
+            message: 'Esperando bridge local...',
+          }))
+        })
+
+        socket.addEventListener('close', () => {
+          setIsSocketReady(false)
+          setStatus((current) => ({
+            ...current,
+            state: current.state === 'connected' ? 'idle' : current.state,
+            message: 'Bridge local desconectado, reintentando...',
+          }))
+          socketRef.current = null
+          scheduleReconnect()
+        })
+
+        socket.addEventListener('message', (messageEvent) => {
+          const message = JSON.parse(String(messageEvent.data)) as LocalBridgeSocketMessage
+          if (message.type === 'gift') {
+            onGiftRef.current(message.payload)
+            return
+          }
+
+          if (message.type === 'status') {
+            setStatus(message.payload)
+          }
+        })
+
+        return
+      }
+
+      if (!supabase) {
+        setStatus({
+          state: 'error',
+          uniqueId: '',
+          message: 'Faltan VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY',
+        })
+        setIsSocketReady(false)
         return
       }
 
@@ -136,7 +210,8 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
       if (reconnectTimeoutRef.current !== null) {
         window.clearTimeout(reconnectTimeoutRef.current)
       }
-      if (channelRef.current) {
+      socketRef.current?.close()
+      if (channelRef.current && supabase) {
         void supabase.removeChannel(channelRef.current)
         channelRef.current = null
       }
@@ -161,22 +236,36 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
   }
 
   function disconnect() {
-    if (!channelRef.current) {
-      return
-    }
-
     const message: BridgeCommandMessage = {
       type: 'disconnect',
     }
-    void channelRef.current.send({
-      type: 'broadcast',
-      event: 'bridge-command',
+
+    if (supabaseRealtimeEnabled) {
+      if (!channelRef.current) {
+        return
+      }
+
+      void channelRef.current.send({
+        type: 'broadcast',
+        event: 'bridge-command',
+        payload: message,
+      })
+      return
+    }
+
+    if (socketRef.current?.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    const envelope: BridgeCommandTransportMessage = {
+      type: 'bridge-command',
       payload: message,
-    })
+    }
+    socketRef.current.send(JSON.stringify(envelope))
   }
 
   return {
-    bridgeUrl: bridgeTransportLabel,
+    bridgeUrl: supabaseRealtimeEnabled ? bridgeTransportLabel : getLocalBridgeWebSocketUrl(),
     status,
     isSocketReady,
     connect,

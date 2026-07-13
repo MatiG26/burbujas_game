@@ -13,15 +13,15 @@ function formatNumber(value: number) {
 
 export function Leaderboard({ entries }: LeaderboardProps) {
   return (
-    <aside className="flex min-h-[620px] flex-col rounded-[28px] border border-white/10 bg-slate-950/55 p-5 shadow-[0_24px_80px_rgba(2,6,23,0.55)] backdrop-blur-xl">
-      <div className="flex items-start justify-between gap-3">
+    <aside className="flex min-h-0 flex-col rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(7,20,35,0.85),rgba(2,6,23,0.95))] p-4 shadow-[0_24px_80px_rgba(2,6,23,0.55)] backdrop-blur-xl sm:p-5 lg:min-h-[620px]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.32em] text-sky-200/75">Leaderboard</p>
-          <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+          <p className="text-[11px] uppercase tracking-[0.32em] text-sky-200/75">Leaderboard</p>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-[1.8rem]">
             Ranking de donaciones
           </h2>
         </div>
-        <div className="rounded-full border border-sky-300/20 bg-sky-400/10 px-4 py-2 text-right">
+        <div className="w-fit rounded-full border border-sky-300/20 bg-sky-400/10 px-4 py-2 text-right">
           <span className="block text-[10px] uppercase tracking-[0.3em] text-sky-100/70">Participantes</span>
           <strong className="text-lg text-white">{entries.length}</strong>
         </div>
@@ -31,7 +31,7 @@ export function Leaderboard({ entries }: LeaderboardProps) {
         {entries.map((entry, index) => (
           <article
             key={entry.id}
-            className="flex items-center gap-3 rounded-3xl border border-white/8 bg-white/6 px-4 py-3"
+            className="flex items-center gap-3 rounded-[28px] border border-white/8 bg-white/6 px-4 py-3.5"
           >
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#fdba74,#fb7185)] text-sm font-black text-slate-950">
               #{index + 1}

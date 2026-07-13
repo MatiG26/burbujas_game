@@ -1,6 +1,7 @@
 import 'dotenv/config'
-import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
+import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
 import { createServer } from 'node:http'
+import { WebSocket, WebSocketServer } from 'ws'
 import { TikTokLive } from 'tiktok-live-events'
 
 type BridgeState = 'idle' | 'connecting' | 'connected' | 'error'
@@ -38,6 +39,64 @@ interface BridgeCommandMessage {
     uniqueId?: string
   }
 }
+
+interface SharedGiftConfig {
+  id: string
+  giftName: string
+  imageUrl: string
+  hpReward: number
+  action: 'boost' | 'split' | 'comment' | 'confetti' | 'boxing'
+  enabled: boolean
+}
+
+interface SharedAppState {
+  username: string
+  avatarUrl: string
+  tiktokLiveId: string
+  giftConfigs: SharedGiftConfig[]
+}
+
+type SharedAppMessage =
+  | {
+    kind: 'manual-donation'
+    sourceId: string
+    event: {
+      username: string
+      avatarUrl: string
+      hpDelta: number
+      sourceLabel: string
+      sourceImageUrl?: string
+      action: 'boost' | 'split' | 'comment' | 'confetti' | 'boxing'
+      commentText?: string
+      quantity: number
+      timestamp: number
+    }
+  }
+  | {
+    kind: 'state-request'
+    sourceId: string
+  }
+  | {
+    kind: 'state-snapshot'
+    sourceId: string
+    state: SharedAppState
+  }
+
+interface BridgeCommandTransportMessage {
+  type: 'bridge-command'
+  payload: BridgeCommandMessage
+}
+
+interface AppSyncTransportMessage {
+  type: 'app-sync'
+  payload: SharedAppMessage
+}
+
+type LocalBridgeSocketMessage =
+  | BridgeGiftMessage
+  | BridgeStatusMessage
+  | BridgeCommandTransportMessage
+  | AppSyncTransportMessage
 
 interface TikTokGiftPayload {
   user?: {
@@ -81,18 +140,16 @@ const supabaseUrl = process.env.SUPABASE_URL?.trim() ?? ''
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? ''
 const supabaseChannelId = (process.env.SUPABASE_CHANNEL_ID?.trim() ?? 'default-room').replace(/\s+/g, '-').toLowerCase()
 const bridgeChannelName = `circular-saw-bridge:${supabaseChannelId}`
+const supabaseEnabled = Boolean(supabaseUrl && supabaseServiceRoleKey)
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('[bridge] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
-  process.exit(1)
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-})
+const supabase: SupabaseClient | null = supabaseEnabled
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
+  : null
 
 let connection: TikTokLive | null = null
 let currentUniqueId = ''
@@ -107,12 +164,28 @@ const server = createServer((_request, response) => {
       state: connection ? 'connected' : 'idle',
       uniqueId: currentUniqueId,
       roomId: currentRoomId || undefined,
+      mode: supabaseEnabled ? 'supabase+ws' : 'ws-local',
       channel: bridgeChannelName,
     }),
   )
 })
 
-async function broadcast(message: BridgeGiftMessage | BridgeStatusMessage) {
+const wss = new WebSocketServer({ server })
+
+function broadcastSocketMessage(message: LocalBridgeSocketMessage, except?: WebSocket) {
+  const serialized = JSON.stringify(message)
+  for (const client of wss.clients) {
+    if (client === except || client.readyState !== WebSocket.OPEN) {
+      continue
+    }
+
+    client.send(serialized)
+  }
+}
+
+async function broadcastBridgeMessage(message: BridgeGiftMessage | BridgeStatusMessage) {
+  broadcastSocketMessage(message)
+
   if (!bridgeChannel) {
     return
   }
@@ -129,7 +202,7 @@ async function broadcast(message: BridgeGiftMessage | BridgeStatusMessage) {
 }
 
 function pushStatus(payload: BridgeStatusPayload) {
-  void broadcast({ type: 'status', payload })
+  void broadcastBridgeMessage({ type: 'status', payload })
 }
 
 function normalizeGiftImage(payload: TikTokGiftPayload) {
@@ -222,7 +295,7 @@ async function connectToLive(uniqueIdInput: string) {
         return
       }
 
-      void broadcast({
+      void broadcastBridgeMessage({
         type: 'gift',
         payload: {
           username: payload.user?.uniqueId ?? payload.user?.nickname ?? 'anonymous',
@@ -239,7 +312,7 @@ async function connectToLive(uniqueIdInput: string) {
     liveConnection.on('like', (payload: TikTokLikePayload) => {
       const likeCount = Math.max(1, Number(payload.likeCount ?? 1))
 
-      void broadcast({
+      void broadcastBridgeMessage({
         type: 'gift',
         payload: {
           username: payload.user?.uniqueId ?? payload.user?.nickname ?? 'anonymous',
@@ -260,7 +333,7 @@ async function connectToLive(uniqueIdInput: string) {
         return
       }
 
-      void broadcast({
+      void broadcastBridgeMessage({
         type: 'gift',
         payload: {
           eventType: 'comment',
@@ -349,9 +422,42 @@ async function handleCommand(command: BridgeCommandMessage) {
   }
 }
 
-async function main() {
-  bridgeChannel = supabase.channel(bridgeChannelName)
+wss.on('connection', (socket) => {
+  const initialStatus: BridgeStatusMessage = {
+    type: 'status',
+    payload: {
+      state: connection ? 'connected' : 'idle',
+      uniqueId: currentUniqueId,
+      roomId: currentRoomId || undefined,
+      message: connection ? 'Bridge conectado' : 'Bridge listo',
+    },
+  }
+  socket.send(JSON.stringify(initialStatus))
 
+  socket.on('message', (rawMessage) => {
+    try {
+      const message = JSON.parse(String(rawMessage)) as LocalBridgeSocketMessage
+      if (message.type === 'bridge-command') {
+        void handleCommand(message.payload)
+        return
+      }
+
+      if (message.type === 'app-sync') {
+        broadcastSocketMessage(message, socket)
+      }
+    } catch (error) {
+      console.error('[bridge] invalid socket message', error)
+    }
+  })
+})
+
+async function setupSupabaseRealtime() {
+  if (!supabaseEnabled || !supabase) {
+    console.log('[bridge] starting in local websocket mode')
+    return
+  }
+
+  bridgeChannel = supabase.channel(bridgeChannelName)
   bridgeChannel.on('broadcast', { event: 'bridge-command' }, ({ payload }) => {
     const command = payload as BridgeCommandMessage
     void handleCommand(command)
@@ -375,13 +481,18 @@ async function main() {
     })
   })
 
-  server.listen(bridgePort, () => {
-    console.log(`[bridge] health server listening on http://0.0.0.0:${bridgePort}`)
-    console.log(`[bridge] realtime channel ready: ${bridgeChannelName}`)
+  console.log(`[bridge] realtime channel ready: ${bridgeChannelName}`)
+}
+
+async function main() {
+  await setupSupabaseRealtime()
+
+  server.listen(bridgePort, '0.0.0.0', () => {
+    console.log(`[bridge] listening on http://0.0.0.0:${bridgePort}`)
     pushStatus({
       state: 'idle',
       uniqueId: '',
-      message: 'Bridge remoto listo',
+      message: supabaseEnabled ? 'Bridge remoto listo' : 'Bridge local listo',
     })
   })
 }
