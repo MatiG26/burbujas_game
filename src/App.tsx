@@ -373,7 +373,6 @@ function App() {
           quantity: 1,
           timestamp: event.timestamp,
         })
-        broadcastCurrentGameStateRef.current()
         return
       }
 
@@ -388,7 +387,6 @@ function App() {
           quantity: Math.max(1, event.repeatCount),
           timestamp: event.timestamp,
         })
-        broadcastCurrentGameStateRef.current()
         return
       }
 
@@ -415,7 +413,6 @@ function App() {
             timestamp: event.timestamp + index,
           })
         }
-        broadcastCurrentGameStateRef.current()
         return
       }
 
@@ -430,7 +427,6 @@ function App() {
           quantity,
           timestamp: event.timestamp,
         })
-        broadcastCurrentGameStateRef.current()
         return
       }
 
@@ -444,7 +440,6 @@ function App() {
         quantity,
         timestamp: event.timestamp,
       })
-      broadcastCurrentGameStateRef.current()
     },
     [donate, giftConfigByImageMap, giftConfigMap, syncGiftImageFromEvent],
   )
@@ -789,8 +784,7 @@ function App() {
       sourceId: instanceId,
       event,
     })
-    broadcastCurrentGameState()
-  }, [avatarUrl, broadcastCurrentGameState, broadcastSharedMessage, donate, instanceId, username])
+  }, [avatarUrl, broadcastSharedMessage, donate, instanceId, username])
 
   const resetMonitorState = useCallback(() => {
     resetGame()

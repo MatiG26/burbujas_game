@@ -120,8 +120,32 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-1.5 sm:gap-2">
-                {topDonors.map((entry, index) => {
+                {[0, 1, 2].map((index) => {
+                  const entry = topDonors[index]
                   const styles = getTopDonorCardStyles(index)
+
+                  if (!entry) {
+                    return (
+                      <article
+                        key={`placeholder-${index}`}
+                        className="min-w-0 rounded-[18px] border border-dashed border-white/10 bg-white/5 px-2 py-2 sm:rounded-2xl sm:px-3"
+                      >
+                        <div className="flex min-w-0 items-start gap-2 opacity-55">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-800/90 text-xs font-black text-slate-400 sm:h-10 sm:w-10 sm:rounded-xl sm:text-sm">
+                            #{index + 1}
+                          </div>
+                          <div className="min-w-0 flex-1 pt-0.5">
+                            <span className="block truncate text-[11px] font-black leading-tight text-slate-500 sm:text-[15px]">
+                              Esperando
+                            </span>
+                            <span className="mt-1 block truncate text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 sm:text-[11px]">
+                              HP 0
+                            </span>
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  }
 
                   return (
                     <article
@@ -167,11 +191,6 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                   )
                 })}
 
-                {topDonors.length === 0 ? (
-                  <div className="col-span-3 rounded-2xl border border-dashed border-white/10 px-3 py-3 text-center text-xs text-slate-400">
-                    El top aparecera cuando lleguen donaciones.
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>
