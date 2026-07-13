@@ -92,6 +92,10 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
       return
     }
 
+    if (latestSpecialEvent.action !== 'confetti' && latestSpecialEvent.action !== 'boxing') {
+      return
+    }
+
     const normalizedUsername = latestSpecialEvent.username.trim()
     if (!normalizedUsername) {
       return
