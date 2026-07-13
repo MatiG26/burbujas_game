@@ -8,6 +8,7 @@ interface DonationControlsProps {
   avatarUrl: string
   tiktokLiveId: string
   bridgeUrl: string
+  syncConnected: boolean
   presets: GiftConfig[]
   activeSaws: ActiveSawSummary[]
   recentEvents: DonationEvent[]
@@ -21,6 +22,9 @@ interface DonationControlsProps {
   onDisconnectTikTok: () => void
   onNavigateBack: () => void
   onNavigateBattle: () => void
+  onResetMonitor: () => void
+  onDownloadDonations: () => void
+  donationCount: number
   activeSection: AdminSection
   simulationPanel?: ReactNode
   leaderboardPanel?: ReactNode
@@ -74,6 +78,10 @@ function getFeedLabel(events: number) {
   return `${events} eventos recientes`
 }
 
+function getSyncLabel(syncConnected: boolean) {
+  return syncConnected ? 'Sync listo' : 'Sync desconectado'
+}
+
 export function TabIcon({ section }: { section: AdminSection }) {
   if (section === 'connect') {
     return (
@@ -111,6 +119,7 @@ export function DonationControls({
   avatarUrl,
   tiktokLiveId,
   bridgeUrl,
+  syncConnected,
   presets,
   activeSaws,
   recentEvents,
@@ -124,6 +133,9 @@ export function DonationControls({
   onDisconnectTikTok,
   onNavigateBack,
   onNavigateBattle,
+  onResetMonitor,
+  onDownloadDonations,
+  donationCount,
   activeSection,
   simulationPanel,
   leaderboardPanel,
@@ -160,6 +172,7 @@ export function DonationControls({
           </div>
 
           <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+            <span className={`rounded-full border px-3 py-1.5 ${syncConnected ? 'border-emerald-300/20 bg-emerald-950/40 text-emerald-200' : 'border-amber-300/20 bg-amber-950/40 text-amber-200'}`}>{getSyncLabel(syncConnected)}</span>
             <span className="rounded-full border border-white/8 bg-[#111315] px-3 py-1.5">{getBridgeLabel(connectionStatus.state)}</span>
             <span className="rounded-full border border-white/8 bg-[#111315] px-3 py-1.5">{getArenaLabel(activeSaws.length)}</span>
             <span className="rounded-full border border-white/8 bg-[#111315] px-3 py-1.5">{getFeedLabel(recentEvents.length)}</span>
@@ -215,6 +228,7 @@ export function DonationControls({
                 <div className="space-y-2 border-l border-white/8 pl-0 text-sm leading-6 text-slate-400 xl:pl-4">
                   <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Estado del bridge</p>
                   <p className="break-all">Bridge: {bridgeUrl}</p>
+                  <p>Sync: {syncConnected ? 'conectado' : 'desconectado'}</p>
                   <p>Estado: {connectionStatus.message}</p>
                   {connectionStatus.roomId ? <p>Room ID: {connectionStatus.roomId}</p> : null}
                 </div>
@@ -374,6 +388,34 @@ export function DonationControls({
           {activeSection === 'monitor' ? (
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
               <div className="grid gap-4">
+                <section className="rounded-[24px] border border-white/8 bg-[#1d2126] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-400">
+                        Acciones del monitor
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-400">Historial disponible: {donationCount} donaciones.</p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={onDownloadDonations}
+                        className="rounded-2xl border border-white/8 bg-[#111315] px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-[#23272c]"
+                      >
+                        Descargar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onResetMonitor}
+                        className="rounded-2xl border border-rose-300/15 bg-rose-950/40 px-4 py-2.5 text-sm font-semibold text-rose-200 transition hover:bg-rose-950/55"
+                      >
+                        Reiniciar
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
                 <section className="space-y-4">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-400">

@@ -147,6 +147,10 @@ export type SharedAppMessage =
     sourceId: string
     state: SharedAppState
   }
+  | {
+    kind: 'reset-game'
+    sourceId: string
+  }
 
 export interface BridgeCommandTransportMessage {
   type: 'bridge-command'

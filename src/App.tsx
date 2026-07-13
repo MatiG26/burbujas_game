@@ -120,6 +120,8 @@ function buildManualDonationEvent(
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => getCurrentRoute())
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>('connect')
+  const [pullDistance, setPullDistance] = useState(0)
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false)
   const [username, setUsername] = useState('StreamerPro')
   const [avatarUrl, setAvatarUrl] = useState(
     'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80',
@@ -130,14 +132,22 @@ function App() {
     defaultGiftConfigs,
   )
   const [instanceId] = useState(() => crypto.randomUUID())
+  const [syncConnected, setSyncConnected] = useState(false)
   const syncChannelRef = useRef<RealtimeChannel | null>(null)
   const syncSocketRef = useRef<WebSocket | null>(null)
   const syncReadyRef = useRef(false)
   const pendingSharedMessagesRef = useRef<SharedAppMessage[]>([])
+  const reconnectTimeoutRef = useRef<number | null>(null)
   const sharedStateRef = useRef<SharedAppState | null>(null)
   const skippedSharedStateRef = useRef<string | null>(null)
-  const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, audioEnabled, toggleAudio, donate } =
+  const pullDistanceRef = useRef(0)
+  const isPullRefreshingRef = useRef(false)
+  const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, donationHistory, audioEnabled, toggleAudio, resetGame, donate } =
     useCircularSawGame()
+
+  useEffect(() => {
+    isPullRefreshingRef.current = isPullRefreshing
+  }, [isPullRefreshing])
 
   useEffect(() => {
     if (giftConfigs.length === 0) {
@@ -158,6 +168,116 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  useEffect(() => {
+    let touchStartY = 0
+    let shouldRefresh = false
+    let reachedRefreshThreshold = false
+    let refreshTimeout: number | null = null
+    const refreshThreshold = 96
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (window.scrollY > 0 || event.touches.length !== 1 || isPullRefreshingRef.current) {
+        shouldRefresh = false
+        reachedRefreshThreshold = false
+        pullDistanceRef.current = 0
+        setPullDistance(0)
+        return
+      }
+
+      touchStartY = event.touches[0].clientY
+      shouldRefresh = true
+      reachedRefreshThreshold = false
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (!shouldRefresh || event.touches.length !== 1) {
+        return
+      }
+
+      const nextPullDistance = Math.max(0, event.touches[0].clientY - touchStartY)
+      const cappedPullDistance = Math.min(nextPullDistance, refreshThreshold + 36)
+      pullDistanceRef.current = cappedPullDistance
+      reachedRefreshThreshold = nextPullDistance >= refreshThreshold
+      setPullDistance(cappedPullDistance)
+    }
+
+    const handleTouchEnd = () => {
+      const shouldTriggerRefresh = shouldRefresh && reachedRefreshThreshold && !isPullRefreshingRef.current
+      shouldRefresh = false
+      reachedRefreshThreshold = false
+
+      if (shouldTriggerRefresh) {
+        pullDistanceRef.current = refreshThreshold
+        setPullDistance(refreshThreshold)
+        setIsPullRefreshing(true)
+        refreshTimeout = window.setTimeout(() => {
+          window.location.reload()
+        }, 320)
+        return
+      }
+
+      pullDistanceRef.current = 0
+      if (!isPullRefreshingRef.current) {
+        setPullDistance(0)
+      }
+    }
+
+    const handleTouchCancel = () => {
+      shouldRefresh = false
+      reachedRefreshThreshold = false
+      pullDistanceRef.current = 0
+      if (!isPullRefreshingRef.current) {
+        setPullDistance(0)
+      }
+    }
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchmove', handleTouchMove, { passive: true })
+    window.addEventListener('touchend', handleTouchEnd, { passive: true })
+    window.addEventListener('touchcancel', handleTouchCancel, { passive: true })
+
+    return () => {
+      if (refreshTimeout !== null) {
+        window.clearTimeout(refreshTimeout)
+      }
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchmove', handleTouchMove)
+      window.removeEventListener('touchend', handleTouchEnd)
+      window.removeEventListener('touchcancel', handleTouchCancel)
+    }
+  }, [])
+
+  const pullRefreshProgress = Math.min(1, pullDistance / 96)
+
+  const pullRefreshIndicator = (
+    <div
+      className={`pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center transition-opacity duration-200 ${pullDistance > 0 || isPullRefreshing ? 'opacity-100' : 'opacity-0'}`}
+      style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+      aria-hidden="true"
+    >
+      <div
+        className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-[#17191c]/92 text-slate-100 shadow-[0_10px_30px_rgba(0,0,0,0.24)] backdrop-blur-md"
+        style={{ transform: `translateY(${Math.min(pullDistance * 0.45, 28)}px) scale(${0.82 + pullRefreshProgress * 0.18})` }}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-5 w-5 ${isPullRefreshing ? 'animate-spin' : ''}`}
+          style={{ transform: isPullRefreshing ? undefined : `rotate(${pullRefreshProgress * 220}deg)` }}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 2v6h-6" />
+          <path d="M3 22v-6h6" />
+          <path d="M21 8a9 9 0 0 0-15.55-3.36L3 7" />
+          <path d="M3 16a9 9 0 0 0 15.55 3.36L21 17" />
+        </svg>
+      </div>
+    </div>
+  )
 
   const normalizedGiftConfigs = useMemo(
     () => sortGiftConfigs(giftConfigs.map(normalizeGiftConfig)),
@@ -385,57 +505,97 @@ function App() {
   useEffect(() => {
     const supabase = getSupabaseClient()
     if (!supabaseRealtimeEnabled) {
-      const socket = new WebSocket(getLocalBridgeWebSocketUrl())
-      syncSocketRef.current = socket
+      let disposed = false
 
-      socket.addEventListener('open', () => {
-        syncReadyRef.current = true
-        flushPendingSharedMessages()
-        broadcastSharedMessage({
-          kind: 'state-request',
-          sourceId: instanceId,
+      const scheduleReconnect = () => {
+        if (disposed || reconnectTimeoutRef.current !== null) {
+          return
+        }
+
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          reconnectTimeoutRef.current = null
+          connectSyncSocket()
+        }, 1200)
+      }
+
+      const connectSyncSocket = () => {
+        if (disposed) {
+          return
+        }
+
+        const socket = new WebSocket(getLocalBridgeWebSocketUrl())
+        syncSocketRef.current = socket
+
+        socket.addEventListener('open', () => {
+          syncReadyRef.current = true
+          setSyncConnected(true)
+          flushPendingSharedMessages()
+          broadcastSharedMessage({
+            kind: 'state-request',
+            sourceId: instanceId,
+          })
         })
-      })
 
-      socket.addEventListener('message', (messageEvent) => {
-        const message = JSON.parse(String(messageEvent.data)) as LocalBridgeSocketMessage
-        if (message.type !== 'app-sync') {
-          return
-        }
-
-        const payload = message.payload
-        if (payload.sourceId === instanceId) {
-          return
-        }
-
-        if (payload.kind === 'manual-donation') {
-          donate(payload.event)
-          return
-        }
-
-        if (payload.kind === 'state-request') {
-          if (!sharedStateRef.current) {
+        socket.addEventListener('message', (messageEvent) => {
+          const message = JSON.parse(String(messageEvent.data)) as LocalBridgeSocketMessage
+          if (message.type !== 'app-sync') {
             return
           }
 
-          broadcastSharedMessage({
-            kind: 'state-snapshot',
-            sourceId: instanceId,
-            state: sharedStateRef.current,
-          })
-          return
-        }
+          const payload = message.payload
+          if (payload.sourceId === instanceId) {
+            return
+          }
 
-        applySharedState(payload.state)
-      })
+          if (payload.kind === 'manual-donation') {
+            donate(payload.event)
+            return
+          }
 
-      socket.addEventListener('close', () => {
-        syncReadyRef.current = false
-        syncSocketRef.current = null
-      })
+          if (payload.kind === 'reset-game') {
+            resetGame()
+            return
+          }
+
+          if (payload.kind === 'state-request') {
+            if (!sharedStateRef.current) {
+              return
+            }
+
+            broadcastSharedMessage({
+              kind: 'state-snapshot',
+              sourceId: instanceId,
+              state: sharedStateRef.current,
+            })
+            return
+          }
+
+          applySharedState(payload.state)
+        })
+
+        socket.addEventListener('error', () => {
+          syncReadyRef.current = false
+          setSyncConnected(false)
+        })
+
+        socket.addEventListener('close', () => {
+          syncReadyRef.current = false
+          setSyncConnected(false)
+          syncSocketRef.current = null
+          scheduleReconnect()
+        })
+      }
+
+      connectSyncSocket()
 
       return () => {
+        disposed = true
         syncReadyRef.current = false
+        setSyncConnected(false)
+        if (reconnectTimeoutRef.current !== null) {
+          window.clearTimeout(reconnectTimeoutRef.current)
+          reconnectTimeoutRef.current = null
+        }
         syncSocketRef.current?.close()
         syncSocketRef.current = null
       }
@@ -459,6 +619,11 @@ function App() {
         return
       }
 
+      if (message.kind === 'reset-game') {
+        resetGame()
+        return
+      }
+
       if (message.kind === 'state-request') {
         if (!sharedStateRef.current) {
           return
@@ -478,6 +643,7 @@ function App() {
     channel.subscribe((subscriptionStatus) => {
       if (subscriptionStatus === 'SUBSCRIBED') {
         syncReadyRef.current = true
+        setSyncConnected(true)
         flushPendingSharedMessages()
         broadcastSharedMessage({
           kind: 'state-request',
@@ -488,17 +654,19 @@ function App() {
 
       if (subscriptionStatus === 'CHANNEL_ERROR' || subscriptionStatus === 'TIMED_OUT' || subscriptionStatus === 'CLOSED') {
         syncReadyRef.current = false
+        setSyncConnected(false)
       }
     })
 
     return () => {
       syncReadyRef.current = false
+      setSyncConnected(false)
       if (syncChannelRef.current === channel) {
         syncChannelRef.current = null
       }
       void supabase.removeChannel(channel)
     }
-  }, [applySharedState, broadcastSharedMessage, donate, flushPendingSharedMessages, instanceId])
+  }, [applySharedState, broadcastSharedMessage, donate, flushPendingSharedMessages, instanceId, resetGame])
 
   useEffect(() => {
     if (!syncChannelRef.current && syncSocketRef.current?.readyState !== WebSocket.OPEN) {
@@ -534,6 +702,38 @@ function App() {
       event,
     })
   }, [avatarUrl, broadcastSharedMessage, donate, instanceId, username])
+
+  const resetMonitorState = useCallback(() => {
+    resetGame()
+    broadcastSharedMessage({
+      kind: 'reset-game',
+      sourceId: instanceId,
+    })
+  }, [broadcastSharedMessage, instanceId, resetGame])
+
+  const downloadDonations = useCallback(() => {
+    const serializedHistory = donationHistory.map((event) => ({
+      usuario: event.username,
+      avatar: event.avatarUrl,
+      hp: event.hpDelta,
+      origen: event.sourceLabel,
+      accion: event.action,
+      cantidad: event.quantity,
+      comentario: event.commentText ?? '',
+      fecha: new Date(event.timestamp).toISOString(),
+    }))
+
+    const blob = new Blob([JSON.stringify(serializedHistory, null, 2)], { type: 'application/json;charset=utf-8' })
+    const objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    link.href = objectUrl
+    link.download = `donaciones-${timestamp}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(objectUrl)
+  }, [donationHistory])
 
   const navigateTo = useCallback((pathname: '/' | '/batalla' | '/config') => {
     if (window.location.pathname === pathname) {
@@ -576,35 +776,40 @@ function App() {
 
   if (route === 'battle') {
     return (
-      <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#19324f_0%,#09111c_52%,#05070b_100%)] text-slate-100">
-        <GameCanvas
-          canvasRef={canvasRef}
-          activeCount={activeSaws.length}
-          canvasSize={canvasSize}
-          fullscreen
-          topDonors={topDonors}
-          gifts={enabledGiftConfigs}
-          audioEnabled={audioEnabled}
-          onToggleAudio={() => {
-            void toggleAudio()
-          }}
-          onTopDonorsSecretTap={() => navigateTo('/')}
-        />
-      </main>
+      <>
+        {pullRefreshIndicator}
+        <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#19324f_0%,#09111c_52%,#05070b_100%)] text-slate-100">
+          <GameCanvas
+            canvasRef={canvasRef}
+            activeCount={activeSaws.length}
+            canvasSize={canvasSize}
+            fullscreen
+            topDonors={topDonors}
+            gifts={enabledGiftConfigs}
+            audioEnabled={audioEnabled}
+            onToggleAudio={() => {
+              void toggleAudio()
+            }}
+            onTopDonorsSecretTap={() => navigateTo('/')}
+          />
+        </main>
+      </>
     )
   }
 
   if (route === 'home') {
     return (
-      <main className="min-h-screen bg-[#111315] px-4 py-5 text-slate-50 sm:px-6 lg:px-8">
-        <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-6xl items-center justify-center">
-          <section className="w-full overflow-hidden rounded-[36px] border border-white/8 bg-[#17191c] p-6 shadow-[0_24px_50px_rgba(0,0,0,0.22)] sm:p-8 lg:p-10">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-center">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.38em] text-slate-500">Circular Saw</p>
-                <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-50 sm:text-5xl lg:text-6xl">
-              Inicio
-                </h1>
+      <>
+        {pullRefreshIndicator}
+        <main className="min-h-screen bg-[#111315] px-4 py-5 text-slate-50 sm:px-6 lg:px-8">
+          <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-6xl items-center justify-center">
+            <section className="w-full overflow-hidden rounded-[36px] border border-white/8 bg-[#17191c] p-6 shadow-[0_24px_50px_rgba(0,0,0,0.22)] sm:p-8 lg:p-10">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-center">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.38em] text-slate-500">Circular Saw</p>
+                  <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-50 sm:text-5xl lg:text-6xl">
+                Inicio
+                  </h1>
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-2">
               <button
@@ -658,56 +863,64 @@ function App() {
                 </div>
               </div>
             </div>
-          </section>
-        </div>
-      </main>
+            </section>
+          </div>
+        </main>
+      </>
     )
   }
 
   return (
-    <main className="min-h-screen bg-[#111315] px-3 pb-28 pt-3 text-slate-50 sm:px-5 sm:pb-32 sm:pt-4 lg:px-8">
-      <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1800px] gap-4 sm:min-h-[calc(100vh-2.5rem)]">
-        <DonationControls
-          username={username}
-          avatarUrl={avatarUrl}
-          tiktokLiveId={tiktokLiveId}
-          bridgeUrl={bridgeUrl}
-          presets={normalizedGiftConfigs}
-          activeSaws={activeSaws}
-          recentEvents={recentEvents}
-          connectionStatus={status}
-          onUsernameChange={setUsername}
-          onAvatarUrlChange={setAvatarUrl}
-          onTikTokLiveIdChange={setTikTokLiveId}
-          onGiftConfigChange={updateGiftConfig}
-          onAddGiftConfig={addGiftConfig}
-          onConnectTikTok={connect}
-          onDisconnectTikTok={disconnect}
-          onNavigateBack={navigateBack}
-          onNavigateBattle={() => navigateTo('/batalla')}
-          activeSection={activeAdminSection}
-          simulationPanel={(
-            <GiftMenuStrip
-              gifts={enabledGiftConfigs}
-              disabled={!canTriggerManualGift}
-              onGiftSelect={triggerManualDonation}
-            />
-          )}
-          leaderboardPanel={<Leaderboard entries={leaderboard} />}
-        />
+    <>
+      {pullRefreshIndicator}
+      <main className="min-h-screen bg-[#111315] px-3 pb-28 pt-3 text-slate-50 sm:px-5 sm:pb-32 sm:pt-4 lg:px-8">
+        <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1800px] gap-4 sm:min-h-[calc(100vh-2.5rem)]">
+          <DonationControls
+            username={username}
+            avatarUrl={avatarUrl}
+            tiktokLiveId={tiktokLiveId}
+            bridgeUrl={bridgeUrl}
+            syncConnected={syncConnected}
+            presets={normalizedGiftConfigs}
+            activeSaws={activeSaws}
+            recentEvents={recentEvents}
+            connectionStatus={status}
+            onUsernameChange={setUsername}
+            onAvatarUrlChange={setAvatarUrl}
+            onTikTokLiveIdChange={setTikTokLiveId}
+            onGiftConfigChange={updateGiftConfig}
+            onAddGiftConfig={addGiftConfig}
+            onConnectTikTok={connect}
+            onDisconnectTikTok={disconnect}
+            onNavigateBack={navigateBack}
+            onNavigateBattle={() => navigateTo('/batalla')}
+            onResetMonitor={resetMonitorState}
+            onDownloadDonations={downloadDonations}
+            donationCount={donationHistory.length}
+            activeSection={activeAdminSection}
+            simulationPanel={(
+              <GiftMenuStrip
+                gifts={enabledGiftConfigs}
+                disabled={!canTriggerManualGift}
+                onGiftSelect={triggerManualDonation}
+              />
+            )}
+            leaderboardPanel={<Leaderboard entries={leaderboard} />}
+          />
 
-        <BottomTabMenu
-          items={[
-            { id: 'connect', label: 'Conectar', icon: <TabIcon section="connect" /> },
-            { id: 'simulate', label: 'Simular', icon: <TabIcon section="simulate" /> },
-            { id: 'gifts', label: 'Premios', icon: <TabIcon section="gifts" /> },
-            { id: 'monitor', label: 'Monitorear', icon: <TabIcon section="monitor" /> },
-          ]}
-          activeItemId={activeAdminSection}
-          onSelect={setActiveAdminSection}
-        />
-      </div>
-    </main>
+          <BottomTabMenu
+            items={[
+              { id: 'connect', label: 'Conectar', icon: <TabIcon section="connect" /> },
+              { id: 'simulate', label: 'Simular', icon: <TabIcon section="simulate" /> },
+              { id: 'gifts', label: 'Premios', icon: <TabIcon section="gifts" /> },
+              { id: 'monitor', label: 'Monitorear', icon: <TabIcon section="monitor" /> },
+            ]}
+            activeItemId={activeAdminSection}
+            onSelect={setActiveAdminSection}
+          />
+        </div>
+      </main>
+    </>
   )
 }
 

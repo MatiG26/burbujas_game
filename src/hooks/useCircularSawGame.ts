@@ -32,9 +32,11 @@ interface UseCircularSawGameResult {
   leaderboard: LeaderboardEntry[]
   activeSaws: ActiveSawSummary[]
   recentEvents: DonationEvent[]
+  donationHistory: DonationEvent[]
   audioEnabled: boolean
   enableAudio: () => Promise<boolean>
   toggleAudio: () => Promise<boolean>
+  resetGame: () => void
   donate: (event: DonationEvent) => GiftApplicationResult
 }
 
@@ -606,6 +608,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [activeSaws, setActiveSaws] = useState<ActiveSawSummary[]>([])
   const [recentEvents, setRecentEvents] = useState<DonationEvent[]>([])
+  const [donationHistory, setDonationHistory] = useState<DonationEvent[]>([])
   const [audioEnabled, setAudioEnabled] = useState(false)
 
   async function enableAudio() {
@@ -654,6 +657,20 @@ export function useCircularSawGame(): UseCircularSawGameResult {
           isPrimary: entity.isPrimary,
         })),
     )
+  }
+
+  function resetGame() {
+    entitiesRef.current.clear()
+    despawnEffectsRef.current = []
+    needleBurstEffectsRef.current = []
+    screenOverlayEffectsRef.current = []
+    leaderboardRef.current.clear()
+    lastPublishRef.current = 0
+    lastTimeRef.current = null
+    setLeaderboard([])
+    setActiveSaws([])
+    setRecentEvents([])
+    setDonationHistory([])
   }
 
   function findPlayerSaws(playerId: string) {
@@ -868,6 +885,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     }
 
     setRecentEvents((current) => [event, ...current].slice(0, maxRecentEvents))
+    setDonationHistory((current) => [event, ...current])
     publishSnapshots()
     return { applied: true }
   }
@@ -1126,9 +1144,11 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     leaderboard,
     activeSaws,
     recentEvents,
+    donationHistory,
     audioEnabled,
     enableAudio,
     toggleAudio,
+    resetGame,
     donate,
   }
 }
