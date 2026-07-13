@@ -216,10 +216,18 @@ export function DonationControls({
                     <button
                       type="button"
                       onClick={onConnectTikTok}
-                      disabled={!tiktokLiveId.trim()}
-                      className="rounded-2xl border border-white/10 bg-slate-100 px-4 py-3.5 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={!tiktokLiveId.trim() || connectionStatus.state === 'connecting'}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-slate-100 px-4 py-3.5 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      Conectar live
+                      {connectionStatus.state === 'connecting' ? (
+                        <>
+                          <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity="0.22" strokeWidth="3" />
+                            <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                          </svg>
+                          Conectando...
+                        </>
+                      ) : 'Conectar live'}
                     </button>
                     <button
                       type="button"

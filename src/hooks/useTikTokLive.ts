@@ -36,6 +36,7 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
   const channelRef = useRef<RealtimeChannel | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
+  const connectTimeoutRef = useRef<number | null>(null)
   const pendingConnectRef = useRef<string | null>(null)
   const onGiftRef = useRef(onGift)
   const socketUrlIndexRef = useRef(0)
@@ -43,6 +44,32 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
   useEffect(() => {
     onGiftRef.current = onGift
   }, [onGift])
+
+  function clearConnectTimeout() {
+    if (connectTimeoutRef.current !== null) {
+      window.clearTimeout(connectTimeoutRef.current)
+      connectTimeoutRef.current = null
+    }
+  }
+
+  function startConnectTimeout(targetUniqueId: string) {
+    clearConnectTimeout()
+    connectTimeoutRef.current = window.setTimeout(() => {
+      setStatus((current) => {
+        if (current.state !== 'connecting' || current.uniqueId !== targetUniqueId.trim()) {
+          return current
+        }
+
+        return {
+          state: 'error',
+          uniqueId: targetUniqueId.trim(),
+          message: supabaseRealtimeEnabled
+            ? 'No hay bridge remoto activo para conectar este live. El frontend en Vercel no conecta a TikTok por si solo.'
+            : 'El bridge local no respondio a tiempo para conectar el live.',
+        }
+      })
+    }, 9000)
+  }
 
   function sendConnectRequest(targetUniqueId: string) {
     if (!targetUniqueId.trim()) {
@@ -150,6 +177,9 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
           }
 
           if (message.type === 'status') {
+            if (message.payload.state === 'connected' || message.payload.state === 'error' || message.payload.state === 'idle') {
+              clearConnectTimeout()
+            }
             setStatus(message.payload)
           }
         })
@@ -177,6 +207,9 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
           return
         }
 
+        if (message.payload.state === 'connected' || message.payload.state === 'error' || message.payload.state === 'idle') {
+          clearConnectTimeout()
+        }
         setStatus(message.payload)
       })
 
@@ -212,6 +245,7 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
 
     return () => {
       isDisposed = true
+      clearConnectTimeout()
       if (reconnectTimeoutRef.current !== null) {
         window.clearTimeout(reconnectTimeoutRef.current)
       }
@@ -228,19 +262,23 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
       return
     }
 
+    const normalizedUniqueId = uniqueId.trim()
+
     setStatus((current) => ({
       ...current,
       state: current.state === 'connected' ? current.state : 'connecting',
-      uniqueId: uniqueId.trim(),
+      uniqueId: normalizedUniqueId,
       message:
         channelRef.current
           ? 'Conectando con TikTok Live...'
           : 'Esperando canal realtime para conectar...',
     }))
-    sendConnectRequest(uniqueId)
+    startConnectTimeout(normalizedUniqueId)
+    sendConnectRequest(normalizedUniqueId)
   }
 
   function disconnect() {
+    clearConnectTimeout()
     const message: BridgeCommandMessage = {
       type: 'disconnect',
     }
