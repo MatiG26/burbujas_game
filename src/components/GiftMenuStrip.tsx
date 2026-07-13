@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import type { GiftConfig } from '../types/game'
 
 const extraInteractions = [
@@ -24,6 +25,35 @@ interface GiftMenuStripProps {
 }
 
 export function GiftMenuStrip({ gifts, onGiftSelect, disabled = false }: GiftMenuStripProps) {
+  const [submittedGiftId, setSubmittedGiftId] = useState<string | null>(null)
+  const submittedGiftTimeoutRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (submittedGiftTimeoutRef.current !== null) {
+        window.clearTimeout(submittedGiftTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  function triggerGift(gift: GiftConfig) {
+    if (disabled) {
+      return
+    }
+
+    setSubmittedGiftId(gift.id)
+    if (submittedGiftTimeoutRef.current !== null) {
+      window.clearTimeout(submittedGiftTimeoutRef.current)
+    }
+
+    submittedGiftTimeoutRef.current = window.setTimeout(() => {
+      setSubmittedGiftId((currentGiftId) => (currentGiftId === gift.id ? null : currentGiftId))
+      submittedGiftTimeoutRef.current = null
+    }, 950)
+
+    onGiftSelect?.(gift)
+  }
+
   return (
     <section className="overflow-hidden rounded-[28px] border border-white/8 bg-[#17191c] p-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)] sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -72,8 +102,8 @@ export function GiftMenuStrip({ gifts, onGiftSelect, disabled = false }: GiftMen
             key={gift.id}
             type="button"
             disabled={disabled}
-            onClick={() => onGiftSelect?.(gift)}
-            className="overflow-hidden rounded-[24px] border border-white/8 bg-[#1d2126] p-4 text-left transition hover:border-white/14 hover:bg-[#23272c] disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => triggerGift(gift)}
+            className={`overflow-hidden rounded-[24px] border p-4 text-left transition active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-40 ${submittedGiftId === gift.id ? 'border-emerald-300/35 bg-emerald-500/12 shadow-[0_0_0_1px_rgba(110,231,183,0.12)]' : 'border-white/8 bg-[#1d2126] hover:border-white/14 hover:bg-[#23272c]'}`}
           >
             <div className="flex items-center gap-3 2xl:flex-col 2xl:items-center 2xl:text-center">
               <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px] bg-[#111315] p-2">
@@ -88,9 +118,14 @@ export function GiftMenuStrip({ gifts, onGiftSelect, disabled = false }: GiftMen
                 <p className="mt-1 text-xs text-slate-400">
                   {gift.action === 'split' ? 'Divide la sierra principal' : `Dona +${gift.hpReward} HP`}
                 </p>
-                <p className="mt-2 text-sm font-black text-slate-100">
-                  {gift.action === 'split' ? 'DIVIDE' : `+${gift.hpReward} HP`}
-                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-black text-slate-100">
+                    {gift.action === 'split' ? 'DIVIDE' : `+${gift.hpReward} HP`}
+                  </p>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] transition ${submittedGiftId === gift.id ? 'bg-emerald-400/20 text-emerald-200' : 'bg-transparent text-transparent'}`}>
+                    Donado
+                  </span>
+                </div>
               </div>
             </div>
           </button>

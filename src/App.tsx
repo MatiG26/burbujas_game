@@ -132,6 +132,8 @@ function App() {
   const [instanceId] = useState(() => crypto.randomUUID())
   const syncChannelRef = useRef<RealtimeChannel | null>(null)
   const syncSocketRef = useRef<WebSocket | null>(null)
+  const syncReadyRef = useRef(false)
+  const pendingSharedMessagesRef = useRef<SharedAppMessage[]>([])
   const sharedStateRef = useRef<SharedAppState | null>(null)
   const skippedSharedStateRef = useRef<string | null>(null)
   const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, audioEnabled, toggleAudio, donate } =
@@ -314,11 +316,11 @@ function App() {
     sharedStateRef.current = sharedAppState
   }, [sharedAppState])
 
-  const broadcastSharedMessage = useCallback((message: SharedAppMessage) => {
+  const sendSharedMessageNow = useCallback((message: SharedAppMessage) => {
     if (supabaseRealtimeEnabled) {
       const channel = syncChannelRef.current
-      if (!channel) {
-        return
+      if (!channel || !syncReadyRef.current) {
+        return false
       }
 
       void channel.send({
@@ -326,11 +328,11 @@ function App() {
         event: 'sync',
         payload: message,
       })
-      return
+      return true
     }
 
     if (syncSocketRef.current?.readyState !== WebSocket.OPEN) {
-      return
+      return false
     }
 
     const envelope: AppSyncTransportMessage = {
@@ -338,7 +340,35 @@ function App() {
       payload: message,
     }
     syncSocketRef.current.send(JSON.stringify(envelope))
+    return true
   }, [])
+
+  const flushPendingSharedMessages = useCallback(() => {
+    if (!syncReadyRef.current || pendingSharedMessagesRef.current.length === 0) {
+      return
+    }
+
+    const pendingMessages = pendingSharedMessagesRef.current
+    pendingSharedMessagesRef.current = []
+
+    for (const pendingMessage of pendingMessages) {
+      if (!sendSharedMessageNow(pendingMessage)) {
+        pendingSharedMessagesRef.current.push(pendingMessage)
+      }
+    }
+  }, [sendSharedMessageNow])
+
+  const broadcastSharedMessage = useCallback((message: SharedAppMessage) => {
+    if (sendSharedMessageNow(message)) {
+      return
+    }
+
+    if (message.kind === 'state-snapshot') {
+      pendingSharedMessagesRef.current = pendingSharedMessagesRef.current.filter((pendingMessage) => pendingMessage.kind !== 'state-snapshot')
+    }
+
+    pendingSharedMessagesRef.current.push(message)
+  }, [sendSharedMessageNow])
 
   const applySharedState = useCallback((state: SharedAppState) => {
     const normalizedState: SharedAppState = {
@@ -359,6 +389,8 @@ function App() {
       syncSocketRef.current = socket
 
       socket.addEventListener('open', () => {
+        syncReadyRef.current = true
+        flushPendingSharedMessages()
         broadcastSharedMessage({
           kind: 'state-request',
           sourceId: instanceId,
@@ -398,10 +430,12 @@ function App() {
       })
 
       socket.addEventListener('close', () => {
+        syncReadyRef.current = false
         syncSocketRef.current = null
       })
 
       return () => {
+        syncReadyRef.current = false
         syncSocketRef.current?.close()
         syncSocketRef.current = null
       }
@@ -443,20 +477,28 @@ function App() {
 
     channel.subscribe((subscriptionStatus) => {
       if (subscriptionStatus === 'SUBSCRIBED') {
+        syncReadyRef.current = true
+        flushPendingSharedMessages()
         broadcastSharedMessage({
           kind: 'state-request',
           sourceId: instanceId,
         })
+        return
+      }
+
+      if (subscriptionStatus === 'CHANNEL_ERROR' || subscriptionStatus === 'TIMED_OUT' || subscriptionStatus === 'CLOSED') {
+        syncReadyRef.current = false
       }
     })
 
     return () => {
+      syncReadyRef.current = false
       if (syncChannelRef.current === channel) {
         syncChannelRef.current = null
       }
       void supabase.removeChannel(channel)
     }
-  }, [applySharedState, broadcastSharedMessage, donate, instanceId])
+  }, [applySharedState, broadcastSharedMessage, donate, flushPendingSharedMessages, instanceId])
 
   useEffect(() => {
     if (!syncChannelRef.current && syncSocketRef.current?.readyState !== WebSocket.OPEN) {
