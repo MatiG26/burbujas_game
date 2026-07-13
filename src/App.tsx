@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { RealtimeChannel } from '@supabase/supabase-js'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DonationControls } from './components/DonationControls'
 import { GameCanvas } from './components/GameCanvas'
 import { GiftMenuStrip } from './components/GiftMenuStrip'
@@ -7,7 +8,8 @@ import { defaultGiftConfigs } from './game/constants'
 import { useCircularSawGame } from './hooks/useCircularSawGame'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { useTikTokLive } from './hooks/useTikTokLive'
-import type { DonationEvent, GiftConfig, LiveGiftEvent } from './types/game'
+import { appSyncChannelName, getSupabaseClient } from './lib/supabase'
+import type { DonationEvent, GiftConfig, LiveGiftEvent, SharedAppMessage, SharedAppState } from './types/game'
 
 const legacyRoseImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/rose.png'
 const currentRoseImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/eba3a9bb85c33e017f3648eaf88d7189~tplv-obj.webp'
@@ -16,8 +18,6 @@ const secondRoseImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast
 const perfumeImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/20b8f61246c7b6032777bb81bf4ee055~tplv-obj.webp'
 const confettiImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/cb4e11b3834e149f08e1cdcc93870b26~tplv-obj.webp'
 const boxingGloveImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/9f8bd92363c400c284179f6719b6ba9c~tplv-obj.webp'
-const manualDonationChannelName = 'circular-saw-manual-donations'
-const manualDonationStorageKey = 'circular-saw:manual-donation-event'
 
 const migratedDefaultGiftConfigMap = new Map([
   ['rose', { giftName: 'Rosa 2', imageUrl: currentRoseImageUrl, hpReward: 10, action: 'boost' as const }],
@@ -68,11 +68,19 @@ function normalizeGiftImageKey(value: string) {
   }
 }
 
-type AppRoute = 'arena' | 'config'
+type AppRoute = 'home' | 'battle' | 'config'
 
 function getCurrentRoute(): AppRoute {
   const pathname = window.location.pathname.replace(/\/+$/, '') || '/'
-  return pathname === '/config' ? 'config' : 'arena'
+  if (pathname === '/config') {
+    return 'config'
+  }
+
+  if (pathname === '/batalla') {
+    return 'battle'
+  }
+
+  return 'home'
 }
 
 function normalizeGiftConfig(gift: GiftConfig): GiftConfig {
@@ -118,6 +126,9 @@ function App() {
     defaultGiftConfigs,
   )
   const [instanceId] = useState(() => crypto.randomUUID())
+  const syncChannelRef = useRef<RealtimeChannel | null>(null)
+  const sharedStateRef = useRef<SharedAppState | null>(null)
+  const skippedSharedStateRef = useRef<string | null>(null)
   const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, audioEnabled, enableAudio, donate } =
     useCircularSawGame()
 
@@ -140,45 +151,6 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
-
-  useEffect(() => {
-    const channel = typeof BroadcastChannel !== 'undefined'
-      ? new BroadcastChannel(manualDonationChannelName)
-      : null
-
-    const applyRemoteDonation = (payload: { sourceId: string, event: DonationEvent }) => {
-      if (payload.sourceId === instanceId) {
-        return
-      }
-
-      donate(payload.event)
-    }
-
-    const handleMessage = (messageEvent: MessageEvent<{ sourceId: string, event: DonationEvent }>) => {
-      applyRemoteDonation(messageEvent.data)
-    }
-
-    const handleStorage = (storageEvent: StorageEvent) => {
-      if (storageEvent.key !== manualDonationStorageKey || !storageEvent.newValue) {
-        return
-      }
-
-      try {
-        applyRemoteDonation(JSON.parse(storageEvent.newValue) as { sourceId: string, event: DonationEvent })
-      } catch {
-        return
-      }
-    }
-
-    channel?.addEventListener('message', handleMessage)
-    window.addEventListener('storage', handleStorage)
-
-    return () => {
-      channel?.removeEventListener('message', handleMessage)
-      channel?.close()
-      window.removeEventListener('storage', handleStorage)
-    }
-  }, [donate, instanceId])
 
   const normalizedGiftConfigs = useMemo(
     () => sortGiftConfigs(giftConfigs.map(normalizeGiftConfig)),
@@ -321,7 +293,118 @@ function App() {
     onGift: handleLiveGift,
   })
 
-  const widgetUrl = `${window.location.origin}/`
+  const sharedAppState = useMemo<SharedAppState>(() => ({
+    username,
+    avatarUrl,
+    tiktokLiveId,
+    giftConfigs: giftConfigs.map(normalizeGiftConfig),
+  }), [avatarUrl, giftConfigs, tiktokLiveId, username])
+
+  const sharedAppStateSerialized = useMemo(
+    () => JSON.stringify(sharedAppState),
+    [sharedAppState],
+  )
+
+  useEffect(() => {
+    sharedStateRef.current = sharedAppState
+  }, [sharedAppState])
+
+  const broadcastSharedMessage = useCallback((message: SharedAppMessage) => {
+    const channel = syncChannelRef.current
+    if (!channel) {
+      return
+    }
+
+    void channel.send({
+      type: 'broadcast',
+      event: 'sync',
+      payload: message,
+    })
+  }, [])
+
+  const applySharedState = useCallback((state: SharedAppState) => {
+    const normalizedState: SharedAppState = {
+      ...state,
+      giftConfigs: state.giftConfigs.map(normalizeGiftConfig),
+    }
+    skippedSharedStateRef.current = JSON.stringify(normalizedState)
+    setUsername(normalizedState.username)
+    setAvatarUrl(normalizedState.avatarUrl)
+    setTikTokLiveId(normalizedState.tiktokLiveId)
+    setGiftConfigs(normalizedState.giftConfigs)
+  }, [setGiftConfigs, setTikTokLiveId])
+
+  useEffect(() => {
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      return
+    }
+
+    const channel = supabase.channel(appSyncChannelName)
+    syncChannelRef.current = channel
+
+    channel.on('broadcast', { event: 'sync' }, ({ payload }) => {
+      const message = payload as SharedAppMessage
+      if (message.sourceId === instanceId) {
+        return
+      }
+
+      if (message.kind === 'manual-donation') {
+        donate(message.event)
+        return
+      }
+
+      if (message.kind === 'state-request') {
+        if (!sharedStateRef.current) {
+          return
+        }
+
+        broadcastSharedMessage({
+          kind: 'state-snapshot',
+          sourceId: instanceId,
+          state: sharedStateRef.current,
+        })
+        return
+      }
+
+      applySharedState(message.state)
+    })
+
+    channel.subscribe((subscriptionStatus) => {
+      if (subscriptionStatus === 'SUBSCRIBED') {
+        broadcastSharedMessage({
+          kind: 'state-request',
+          sourceId: instanceId,
+        })
+      }
+    })
+
+    return () => {
+      if (syncChannelRef.current === channel) {
+        syncChannelRef.current = null
+      }
+      void supabase.removeChannel(channel)
+    }
+  }, [applySharedState, broadcastSharedMessage, donate, instanceId])
+
+  useEffect(() => {
+    if (!syncChannelRef.current) {
+      return
+    }
+
+    if (skippedSharedStateRef.current === sharedAppStateSerialized) {
+      skippedSharedStateRef.current = null
+      return
+    }
+
+    broadcastSharedMessage({
+      kind: 'state-snapshot',
+      sourceId: instanceId,
+      state: sharedAppState,
+    })
+  }, [broadcastSharedMessage, instanceId, sharedAppState, sharedAppStateSerialized])
+
+  const battleUrl = `${window.location.origin}/batalla`
   const configUrl = `${window.location.origin}/config`
   const canTriggerManualGift = username.trim().length > 0
 
@@ -331,23 +414,17 @@ function App() {
     }
 
     const event = buildManualDonationEvent(username, avatarUrl, preset)
-    const payload = {
-      sourceId: instanceId,
-      event,
-    }
 
     donate(event)
 
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel(manualDonationChannelName)
-      channel.postMessage(payload)
-      channel.close()
-    }
+    broadcastSharedMessage({
+      kind: 'manual-donation',
+      sourceId: instanceId,
+      event,
+    })
+  }, [avatarUrl, broadcastSharedMessage, donate, instanceId, username])
 
-    window.localStorage.setItem(manualDonationStorageKey, JSON.stringify(payload))
-  }, [avatarUrl, donate, instanceId, username])
-
-  const navigateTo = useCallback((pathname: '/' | '/config') => {
+  const navigateTo = useCallback((pathname: '/' | '/batalla' | '/config') => {
     if (window.location.pathname === pathname) {
       setRoute(getCurrentRoute())
       return
@@ -377,7 +454,7 @@ function App() {
     ])
   }
 
-  if (route === 'arena') {
+  if (route === 'battle') {
     return (
       <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#19324f_0%,#09111c_52%,#05070b_100%)] text-slate-100">
         <GameCanvas
@@ -396,6 +473,62 @@ function App() {
     )
   }
 
+  if (route === 'home') {
+    return (
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top,#2b6d86_0%,#0b3c53_48%,#062537_100%)] px-4 py-6 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-5xl items-center justify-center">
+          <section className="w-full rounded-[36px] border border-white/10 bg-slate-950/35 p-6 shadow-[0_30px_100px_rgba(2,12,27,0.45)] backdrop-blur-xl sm:p-8 lg:p-10">
+            <p className="text-xs uppercase tracking-[0.38em] text-cyan-100/70">Circular Saw</p>
+            <h1 className="mt-3 text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
+              Elige a donde entrar
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-cyan-50/78 sm:text-base">
+              Usa batalla para abrir el campo limpio del juego y config para conectar TikTok,
+              editar regalos y lanzar pruebas manuales.
+            </p>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => navigateTo('/batalla')}
+                className="rounded-[28px] border border-cyan-100/20 bg-[linear-gradient(160deg,rgba(94,234,212,0.26),rgba(8,145,178,0.2))] px-6 py-8 text-left shadow-[0_20px_60px_rgba(8,145,178,0.2)] transition hover:border-cyan-100/35 hover:bg-[linear-gradient(160deg,rgba(94,234,212,0.34),rgba(8,145,178,0.28))]"
+              >
+                <span className="block text-xs uppercase tracking-[0.32em] text-cyan-100/70">Ruta</span>
+                <strong className="mt-3 block text-3xl font-black text-white">Batalla</strong>
+                <span className="mt-3 block text-sm leading-6 text-cyan-50/75">
+                  Abre el widget del campo completo en /batalla.
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigateTo('/config')}
+                className="rounded-[28px] border border-white/10 bg-[linear-gradient(160deg,rgba(255,255,255,0.12),rgba(15,23,42,0.38))] px-6 py-8 text-left shadow-[0_20px_60px_rgba(15,23,42,0.28)] transition hover:border-white/20 hover:bg-[linear-gradient(160deg,rgba(255,255,255,0.18),rgba(15,23,42,0.48))]"
+              >
+                <span className="block text-xs uppercase tracking-[0.32em] text-slate-200/70">Ruta</span>
+                <strong className="mt-3 block text-3xl font-black text-white">Config</strong>
+                <span className="mt-3 block text-sm leading-6 text-slate-200/78">
+                  Entra al panel de control en /config.
+                </span>
+              </button>
+            </div>
+
+            <div className="mt-8 grid gap-3 text-xs text-slate-200/80 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
+                <span className="block uppercase tracking-[0.24em] text-slate-300/55">Batalla</span>
+                <strong className="mt-1 block text-sm text-white">{battleUrl}</strong>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
+                <span className="block uppercase tracking-[0.24em] text-slate-300/55">Config</span>
+                <strong className="mt-1 block text-sm text-white">{configUrl}</strong>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,#19324f_0%,#09111c_52%,#05070b_100%)] px-4 py-4 text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1800px] gap-4">
@@ -408,17 +541,24 @@ function App() {
               </h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300/80">
                 Usa esta ruta para conectar TikTok, editar premios y lanzar donaciones manuales.
-                El widget limpio para OBS o navegador queda en la ruta principal.
+                El widget limpio para OBS o navegador queda en la ruta /batalla.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => navigateTo('/')}
+                onClick={() => navigateTo('/batalla')}
                 className="rounded-2xl border border-emerald-300/25 bg-emerald-400/15 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400/25"
               >
-                Abrir widget
+                Abrir batalla
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateTo('/')}
+                className="rounded-2xl border border-cyan-200/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-300/20"
+              >
+                Ir al inicio
               </button>
               <button
                 type="button"
@@ -432,8 +572,8 @@ function App() {
 
           <div className="mt-4 grid gap-3 text-xs text-slate-300/75 sm:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3">
-              <span className="block uppercase tracking-[0.24em] text-slate-500">Widget</span>
-              <strong className="mt-1 block text-sm text-white">{widgetUrl}</strong>
+              <span className="block uppercase tracking-[0.24em] text-slate-500">Batalla</span>
+              <strong className="mt-1 block text-sm text-white">{battleUrl}</strong>
             </div>
             <div className="rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3">
               <span className="block uppercase tracking-[0.24em] text-slate-500">Config</span>

@@ -74,4 +74,3 @@ export const minImpactDamage = 8
 export const maxImpactDamage = 75
 export const impactDamageFactor = 0.12
 export const splitImpulse = 280
-export const bridgeWebSocketUrl = 'ws://127.0.0.1:3189'

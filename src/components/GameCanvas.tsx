@@ -66,16 +66,8 @@ function getTopDonorCardStyles(index: number) {
 export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = false, topDonors = [], gifts = [], audioEnabled = false, onEnableAudio }: GameCanvasProps) {
   if (fullscreen) {
     return (
-      <section className="relative flex h-screen flex-col overflow-hidden bg-slate-950/40 px-3 py-3 sm:px-4">
-        <video
-          className="absolute inset-0 h-full w-full object-cover"
-          src="/background.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
-        />
-        <div className="absolute inset-0 bg-slate-950/18" />
+      <section className="relative flex h-screen flex-col overflow-hidden bg-[linear-gradient(180deg,#0d6d82_0%,#09536d_45%,#083a57_100%)] px-3 py-3 sm:px-4">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(190,242,255,0.22),transparent_42%),radial-gradient(circle_at_bottom,rgba(12,74,110,0.32),transparent_45%)]" />
 
         <div className="relative z-10 shrink-0">
           <div className="grid gap-3">

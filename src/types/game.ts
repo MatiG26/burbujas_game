@@ -125,6 +125,29 @@ export interface BridgeCommandMessage {
   }
 }
 
+export interface SharedAppState {
+  username: string
+  avatarUrl: string
+  tiktokLiveId: string
+  giftConfigs: GiftConfig[]
+}
+
+export type SharedAppMessage =
+  | {
+    kind: 'manual-donation'
+    sourceId: string
+    event: DonationEvent
+  }
+  | {
+    kind: 'state-request'
+    sourceId: string
+  }
+  | {
+    kind: 'state-snapshot'
+    sourceId: string
+    state: SharedAppState
+  }
+
 export interface GiftApplicationResult {
   applied: boolean
   reason?: string

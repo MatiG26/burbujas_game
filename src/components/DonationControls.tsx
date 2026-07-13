@@ -87,7 +87,7 @@ export function DonationControls({
             <h3 className="text-sm font-semibold uppercase tracking-[0.28em] text-sky-100/80">
               TikTok Live Bridge
             </h3>
-            <p className="mt-1 text-xs text-slate-300/75">Conecta el widget al usuario que esta en directo.</p>
+            <p className="mt-1 text-xs text-slate-300/75">Conecta el live remoto y comparte los eventos con cualquier dispositivo.</p>
           </div>
           <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em] ${connectionStatus.state === 'connected' ? 'bg-emerald-400/20 text-emerald-200' : connectionStatus.state === 'connecting' ? 'bg-amber-400/20 text-amber-100' : connectionStatus.state === 'error' ? 'bg-rose-400/20 text-rose-100' : 'bg-white/10 text-slate-300'}`}>
             {connectionStatus.state}
@@ -142,7 +142,7 @@ export function DonationControls({
             >
               Agregar donacion
             </button>
-            <span className="text-xs text-slate-400">Persistente en navegador</span>
+            <span className="text-xs text-slate-400">Sincronizable entre dispositivos</span>
           </div>
         </div>
 

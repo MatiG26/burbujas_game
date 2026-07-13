@@ -1,6 +1,6 @@
 import 'dotenv/config'
+import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { createServer } from 'node:http'
-import { WebSocket, WebSocketServer } from 'ws'
 import { TikTokLive } from 'tiktok-live-events'
 
 type BridgeState = 'idle' | 'connecting' | 'connected' | 'error'
@@ -61,7 +61,6 @@ interface TikTokLikePayload {
     profilePictureUrl?: string
   }
   likeCount?: number
-  totalLikes?: number
 }
 
 interface TikTokChatPayload {
@@ -77,26 +76,60 @@ interface TikTokRoomInfoPayload {
   roomId?: string
 }
 
-const bridgePort = Number(process.env.TIKTOK_BRIDGE_PORT ?? 3189)
+const bridgePort = Number(process.env.PORT ?? process.env.TIKTOK_BRIDGE_PORT ?? 3189)
+const supabaseUrl = process.env.SUPABASE_URL?.trim() ?? ''
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? ''
+const supabaseChannelId = (process.env.SUPABASE_CHANNEL_ID?.trim() ?? 'default-room').replace(/\s+/g, '-').toLowerCase()
+const bridgeChannelName = `circular-saw-bridge:${supabaseChannelId}`
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error('[bridge] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+})
 
 let connection: TikTokLive | null = null
 let currentUniqueId = ''
 let currentRoomId = ''
+let bridgeChannel: RealtimeChannel | null = null
 
-const server = createServer()
-const wss = new WebSocketServer({ server })
+const server = createServer((_request, response) => {
+  response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
+  response.end(
+    JSON.stringify({
+      ok: true,
+      state: connection ? 'connected' : 'idle',
+      uniqueId: currentUniqueId,
+      roomId: currentRoomId || undefined,
+      channel: bridgeChannelName,
+    }),
+  )
+})
 
-function broadcast(message: BridgeGiftMessage | BridgeStatusMessage) {
-  const serialized = JSON.stringify(message)
-  for (const client of wss.clients) {
-    if (client.readyState === client.OPEN) {
-      client.send(serialized)
-    }
+async function broadcast(message: BridgeGiftMessage | BridgeStatusMessage) {
+  if (!bridgeChannel) {
+    return
+  }
+
+  const sendStatus = await bridgeChannel.send({
+    type: 'broadcast',
+    event: 'bridge',
+    payload: message,
+  })
+
+  if (sendStatus !== 'ok') {
+    console.warn('[bridge] realtime broadcast status:', sendStatus)
   }
 }
 
 function pushStatus(payload: BridgeStatusPayload) {
-  broadcast({ type: 'status', payload })
+  void broadcast({ type: 'status', payload })
 }
 
 function normalizeGiftImage(payload: TikTokGiftPayload) {
@@ -104,8 +137,7 @@ function normalizeGiftImage(payload: TikTokGiftPayload) {
 }
 
 function shouldEmitGift(payload: TikTokGiftPayload) {
-  const giftType = payload.giftType
-  if (giftType === 1) {
+  if (payload.giftType === 1) {
     return Boolean(payload.repeatEnd)
   }
 
@@ -186,34 +218,32 @@ async function connectToLive(uniqueIdInput: string) {
     })
 
     liveConnection.on('gift', (payload: TikTokGiftPayload) => {
-      const giftPayload = payload as TikTokGiftPayload
-      if (!shouldEmitGift(giftPayload)) {
+      if (!shouldEmitGift(payload)) {
         return
       }
 
-      broadcast({
+      void broadcast({
         type: 'gift',
         payload: {
-          username: giftPayload.user?.uniqueId ?? giftPayload.user?.nickname ?? 'anonymous',
-          avatarUrl: giftPayload.user?.profilePictureUrl ?? '',
-          giftName: giftPayload.giftName ?? `gift-${giftPayload.giftId ?? 'unknown'}`,
-          giftImageUrl: normalizeGiftImage(giftPayload),
-          repeatCount: Math.max(1, Number(giftPayload.repeatCount ?? 1)),
-          giftId: String(giftPayload.giftId ?? ''),
+          username: payload.user?.uniqueId ?? payload.user?.nickname ?? 'anonymous',
+          avatarUrl: payload.user?.profilePictureUrl ?? '',
+          giftName: payload.giftName ?? `gift-${payload.giftId ?? 'unknown'}`,
+          giftImageUrl: normalizeGiftImage(payload),
+          repeatCount: Math.max(1, Number(payload.repeatCount ?? 1)),
+          giftId: String(payload.giftId ?? ''),
           timestamp: Date.now(),
         },
       })
     })
 
     liveConnection.on('like', (payload: TikTokLikePayload) => {
-      const likePayload = payload as TikTokLikePayload
-      const likeCount = Math.max(1, Number(likePayload.likeCount ?? 1))
+      const likeCount = Math.max(1, Number(payload.likeCount ?? 1))
 
-      broadcast({
+      void broadcast({
         type: 'gift',
         payload: {
-          username: likePayload.user?.uniqueId ?? likePayload.user?.nickname ?? 'anonymous',
-          avatarUrl: likePayload.user?.profilePictureUrl ?? '',
+          username: payload.user?.uniqueId ?? payload.user?.nickname ?? 'anonymous',
+          avatarUrl: payload.user?.profilePictureUrl ?? '',
           eventType: 'like',
           giftName: 'Like',
           giftImageUrl: '',
@@ -225,18 +255,17 @@ async function connectToLive(uniqueIdInput: string) {
     })
 
     liveConnection.on('chat', (payload: TikTokChatPayload) => {
-      const chatPayload = payload as TikTokChatPayload
-      const commentText = chatPayload.comment?.trim()
+      const commentText = payload.comment?.trim()
       if (!commentText) {
         return
       }
 
-      broadcast({
+      void broadcast({
         type: 'gift',
         payload: {
           eventType: 'comment',
-          username: chatPayload.user?.uniqueId ?? chatPayload.user?.nickname ?? 'anonymous',
-          avatarUrl: chatPayload.user?.profilePictureUrl ?? '',
+          username: payload.user?.uniqueId ?? payload.user?.nickname ?? 'anonymous',
+          avatarUrl: payload.user?.profilePictureUrl ?? '',
           giftName: 'Comment',
           giftImageUrl: '',
           commentText,
@@ -252,7 +281,7 @@ async function connectToLive(uniqueIdInput: string) {
       pushStatus({
         state: 'connected',
         uniqueId,
-        roomId: currentRoomId,
+        roomId: currentRoomId || undefined,
         message: 'Recibiendo regalos del live',
       })
     })
@@ -309,41 +338,55 @@ async function connectToLive(uniqueIdInput: string) {
   }
 }
 
-wss.on('connection', (socket: WebSocket) => {
-  socket.send(
-    JSON.stringify({
-      type: 'status',
-      payload: {
-        state: connection ? 'connected' : 'idle',
-        uniqueId: currentUniqueId,
-        roomId: currentRoomId || undefined,
-        message: connection ? 'Bridge conectado' : 'Bridge local listo',
-      },
-    } satisfies BridgeStatusMessage),
-  )
+async function handleCommand(command: BridgeCommandMessage) {
+  if (command.type === 'disconnect') {
+    await disconnectCurrentConnection()
+    return
+  }
 
-  socket.on('message', async (rawMessage: WebSocket.RawData) => {
-    try {
-      const message = JSON.parse(String(rawMessage)) as BridgeCommandMessage
-      console.log(`[bridge] ws message: ${message.type}`)
-      if (message.type === 'connect') {
-        await connectToLive(message.payload?.uniqueId ?? '')
+  if (command.type === 'connect') {
+    await connectToLive(command.payload?.uniqueId ?? '')
+  }
+}
+
+async function main() {
+  bridgeChannel = supabase.channel(bridgeChannelName)
+
+  bridgeChannel.on('broadcast', { event: 'bridge-command' }, ({ payload }) => {
+    const command = payload as BridgeCommandMessage
+    void handleCommand(command)
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    if (!bridgeChannel) {
+      reject(new Error('No realtime channel available'))
+      return
+    }
+
+    bridgeChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        resolve()
         return
       }
 
-      if (message.type === 'disconnect') {
-        await disconnectCurrentConnection()
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        reject(new Error(`Supabase realtime status: ${status}`))
       }
-    } catch (error) {
-      pushStatus({
-        state: 'error',
-        uniqueId: currentUniqueId,
-        message: error instanceof Error ? error.message : 'Mensaje invalido',
-      })
-    }
+    })
   })
-})
 
-server.listen(bridgePort, () => {
-  console.log(`TikTok bridge listening on ws://127.0.0.1:${bridgePort}`)
+  server.listen(bridgePort, () => {
+    console.log(`[bridge] health server listening on http://0.0.0.0:${bridgePort}`)
+    console.log(`[bridge] realtime channel ready: ${bridgeChannelName}`)
+    pushStatus({
+      state: 'idle',
+      uniqueId: '',
+      message: 'Bridge remoto listo',
+    })
+  })
+}
+
+void main().catch((error) => {
+  console.error('[bridge] startup failed', error)
+  process.exit(1)
 })

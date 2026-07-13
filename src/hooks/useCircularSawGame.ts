@@ -601,7 +601,6 @@ export function useCircularSawGame(): UseCircularSawGameResult {
   const lastPublishRef = useRef(0)
   const dprRef = useRef(1)
   const canvasSizeRef = useRef(defaultCanvasSize)
-  const backgroundAudioRef = useRef<HTMLAudioElement | null>(null)
   const boomAudioRef = useRef<HTMLAudioElement | null>(null)
   const boxingBellAudioRef = useRef<HTMLAudioElement | null>(null)
   const confettiAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -613,13 +612,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
   const [audioEnabled, setAudioEnabled] = useState(false)
 
   async function enableAudio() {
-    const backgroundAudio = backgroundAudioRef.current
-    if (!backgroundAudio) {
-      return false
-    }
-
     try {
-      await backgroundAudio.play()
       audioEnabledRef.current = true
       setAudioEnabled(true)
       return true
@@ -883,12 +876,6 @@ export function useCircularSawGame(): UseCircularSawGameResult {
       return
     }
 
-    const backgroundAudio = new Audio('/sound/burbujas_background.m4a')
-    backgroundAudio.loop = true
-    backgroundAudio.volume = 0.35
-    backgroundAudio.preload = 'auto'
-    backgroundAudioRef.current = backgroundAudio
-
     const boomAudio = new Audio('/sound/burbujas_boom.m4a')
     boomAudio.volume = 0.75
     boomAudio.preload = 'auto'
@@ -917,7 +904,6 @@ export function useCircularSawGame(): UseCircularSawGameResult {
       }
     }
 
-    void enableAudio()
     window.addEventListener('pointerdown', unlockAudio)
     window.addEventListener('keydown', unlockAudio)
     window.addEventListener('touchstart', unlockAudio)
@@ -1115,11 +1101,8 @@ export function useCircularSawGame(): UseCircularSawGameResult {
 
     return () => {
       removeUnlockListeners()
-      backgroundAudio.pause()
-      backgroundAudio.currentTime = 0
       audioEnabledRef.current = false
       setAudioEnabled(false)
-      backgroundAudioRef.current = null
       boomAudioRef.current = null
       boxingBellAudioRef.current = null
       confettiAudioRef.current = null
