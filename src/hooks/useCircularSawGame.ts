@@ -686,8 +686,36 @@ export function useCircularSawGame(): UseCircularSawGameResult {
   }
 
   function applySharedGameState(state: SharedGameState) {
-    entitiesRef.current = new Map(state.entities.map((entity) => [entity.id, { ...entity }]))
-    leaderboardRef.current = new Map(state.leaderboard.map((entry) => [entry.id, { ...entry }]))
+    const nextEntities = new Map(state.entities.map((entity) => [entity.id, { ...entity }]))
+    const nextLeaderboard = new Map(state.leaderboard.map((entry) => [entry.id, { ...entry }]))
+
+    for (const entry of nextLeaderboard.values()) {
+      if (!entry.isActive || entry.currentHp <= 0) {
+        continue
+      }
+
+      const hasVisibleEntity = [...nextEntities.values()].some(
+        (entity) => entity.playerId === entry.id && entity.hp > 0,
+      )
+
+      if (hasVisibleEntity) {
+        continue
+      }
+
+      const fallbackEntity = createNewSaw(
+        entry.id,
+        entry.username,
+        entry.avatarUrl,
+        Math.max(0.25, entry.currentHp),
+        canvasSizeRef.current,
+        true,
+        Math.random() * 360,
+      )
+      nextEntities.set(fallbackEntity.id, fallbackEntity)
+    }
+
+    entitiesRef.current = nextEntities
+    leaderboardRef.current = nextLeaderboard
     setRecentEvents(state.recentEvents.map((event) => ({ ...event })))
     setDonationHistory(state.donationHistory.map((event) => ({ ...event })))
     publishSnapshots()
