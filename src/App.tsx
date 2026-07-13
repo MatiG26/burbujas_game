@@ -9,7 +9,7 @@ import { defaultGiftConfigs } from './game/constants'
 import { useCircularSawGame } from './hooks/useCircularSawGame'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { useTikTokLive } from './hooks/useTikTokLive'
-import { appSyncChannelName, getLocalBridgeWebSocketUrl, getSupabaseClient, supabaseRealtimeEnabled } from './lib/supabase'
+import { getAppSyncChannelName, getLocalBridgeWebSocketUrls, getSupabaseClient, isValidSyncRoomCode, normalizeSyncRoomCode, supabaseRealtimeEnabled } from './lib/supabase'
 import type { AppSyncTransportMessage, DonationEvent, GiftConfig, LiveGiftEvent, LocalBridgeSocketMessage, SharedAppMessage, SharedAppState } from './types/game'
 import type { AdminSection } from './components/DonationControls'
 import { TabIcon } from './components/DonationControls'
@@ -122,11 +122,13 @@ function App() {
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>('connect')
   const [pullDistance, setPullDistance] = useState(0)
   const [isPullRefreshing, setIsPullRefreshing] = useState(false)
+  const [homeSyncCodeInput, setHomeSyncCodeInput] = useState('')
   const [username, setUsername] = useState('StreamerPro')
   const [avatarUrl, setAvatarUrl] = useState(
     'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80',
   )
   const [tiktokLiveId, setTikTokLiveId] = useLocalStorageState('circular-saw:tiktok-live-id', '')
+  const [syncCode, setSyncCode] = useLocalStorageState('circular-saw:sync-code', '')
   const [giftConfigs, setGiftConfigs] = useLocalStorageState<GiftConfig[]>(
     'circular-saw:gift-configs',
     defaultGiftConfigs,
@@ -142,6 +144,7 @@ function App() {
   const skippedSharedStateRef = useRef<string | null>(null)
   const pullDistanceRef = useRef(0)
   const isPullRefreshingRef = useRef(false)
+  const syncSocketUrlIndexRef = useRef(0)
   const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, donationHistory, audioEnabled, toggleAudio, resetGame, donate } =
     useCircularSawGame()
 
@@ -288,6 +291,17 @@ function App() {
     () => normalizedGiftConfigs.filter((gift) => gift.enabled),
     [normalizedGiftConfigs],
   )
+
+  const normalizedSyncCode = useMemo(() => normalizeSyncRoomCode(syncCode), [syncCode])
+  const hasValidSyncCode = useMemo(() => isValidSyncRoomCode(normalizedSyncCode), [normalizedSyncCode])
+  const appSyncChannelName = useMemo(
+    () => getAppSyncChannelName(hasValidSyncCode ? normalizedSyncCode : undefined),
+    [hasValidSyncCode, normalizedSyncCode],
+  )
+
+  useEffect(() => {
+    setHomeSyncCodeInput(normalizedSyncCode)
+  }, [normalizedSyncCode])
 
   const giftConfigMap = useMemo(
     () => new Map(enabledGiftConfigs.map((gift) => [normalizeGiftName(gift.giftName), gift])),
@@ -523,10 +537,14 @@ function App() {
           return
         }
 
-        const socket = new WebSocket(getLocalBridgeWebSocketUrl())
+        const socketUrls = getLocalBridgeWebSocketUrls()
+        const socketUrl = socketUrls[syncSocketUrlIndexRef.current % socketUrls.length]
+        syncSocketUrlIndexRef.current += 1
+        const socket = new WebSocket(socketUrl)
         syncSocketRef.current = socket
 
         socket.addEventListener('open', () => {
+          syncSocketUrlIndexRef.current = 0
           syncReadyRef.current = true
           setSyncConnected(true)
           flushPendingSharedMessages()
@@ -605,6 +623,16 @@ function App() {
       return
     }
 
+    if (!hasValidSyncCode) {
+      syncReadyRef.current = false
+      setSyncConnected(false)
+      if (syncChannelRef.current) {
+        void supabase.removeChannel(syncChannelRef.current)
+        syncChannelRef.current = null
+      }
+      return
+    }
+
     const channel = supabase.channel(appSyncChannelName)
     syncChannelRef.current = channel
 
@@ -666,7 +694,7 @@ function App() {
       }
       void supabase.removeChannel(channel)
     }
-  }, [applySharedState, broadcastSharedMessage, donate, flushPendingSharedMessages, instanceId, resetGame])
+  }, [appSyncChannelName, applySharedState, broadcastSharedMessage, donate, flushPendingSharedMessages, hasValidSyncCode, instanceId, resetGame])
 
   useEffect(() => {
     if (!syncChannelRef.current && syncSocketRef.current?.readyState !== WebSocket.OPEN) {
@@ -754,6 +782,22 @@ function App() {
     navigateTo('/')
   }, [navigateTo])
 
+  const submitHomeSyncCode = useCallback(() => {
+    const nextCode = normalizeSyncRoomCode(homeSyncCodeInput)
+    if (!isValidSyncRoomCode(nextCode)) {
+      return
+    }
+
+    setSyncCode(nextCode)
+    navigateTo('/')
+  }, [homeSyncCodeInput, navigateTo, setSyncCode])
+
+  const leaveRoom = useCallback(() => {
+    setSyncCode('')
+    setHomeSyncCodeInput('')
+    navigateTo('/')
+  }, [navigateTo, setSyncCode])
+
   function updateGiftConfig(giftId: string, field: keyof GiftConfig, value: string | number | boolean) {
     setGiftConfigs((current) =>
       current.map((gift) => (gift.id === giftId ? { ...gift, [field]: value } : gift)),
@@ -772,6 +816,54 @@ function App() {
         enabled: true,
       },
     ])
+  }
+
+  if (!hasValidSyncCode) {
+    return (
+      <>
+        {pullRefreshIndicator}
+        <main className="min-h-screen bg-[#111315] px-4 py-5 text-slate-50 sm:px-6 lg:px-8">
+          <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-6xl items-center justify-center">
+            <section className="w-full max-w-2xl overflow-hidden rounded-[36px] border border-white/8 bg-[#17191c] p-6 shadow-[0_24px_50px_rgba(0,0,0,0.22)] sm:p-8 lg:p-10">
+              <p className="text-[11px] uppercase tracking-[0.38em] text-slate-500">Circular Saw</p>
+              <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-50 sm:text-5xl">Entrar a sala</h1>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">
+                Coloca una clave de 6 digitos. Si en tu celular y en tu PC usas la misma clave, ambos dispositivos comparten la misma sala y veran las mismas donaciones.
+              </p>
+
+              <div className="mt-8 rounded-[30px] border border-white/8 bg-[#1d2126] p-5">
+                <label className="block text-sm font-medium text-slate-300">
+                  Clave de sala
+                  <input
+                    value={homeSyncCodeInput}
+                    onChange={(event) => setHomeSyncCodeInput(normalizeSyncRoomCode(event.target.value))}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    placeholder="123456"
+                    className="mt-3 w-full rounded-2xl border border-white/8 bg-[#111315] px-4 py-4 text-center text-2xl font-black tracking-[0.42em] text-slate-50 outline-none transition focus:border-slate-500"
+                  />
+                </label>
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <button
+                    type="button"
+                    onClick={submitHomeSyncCode}
+                    disabled={!isValidSyncRoomCode(homeSyncCodeInput)}
+                    className="rounded-2xl border border-white/10 bg-slate-100 px-5 py-3.5 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Entrar
+                  </button>
+                  <span className={`text-xs ${isValidSyncRoomCode(homeSyncCodeInput) ? 'text-emerald-300' : 'text-amber-300'}`}>
+                    {isValidSyncRoomCode(homeSyncCodeInput) ? 'Clave lista para entrar' : 'La clave debe tener 6 digitos'}
+                  </span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </>
+    )
   }
 
   if (route === 'battle') {
@@ -808,32 +900,51 @@ function App() {
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.38em] text-slate-500">Circular Saw</p>
                   <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-50 sm:text-5xl lg:text-6xl">
-                Inicio
+                    Inicio
                   </h1>
 
-                <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => navigateTo('/batalla')}
-                className="rounded-[28px] border border-white/10 bg-slate-100 px-6 py-8 text-left shadow-[0_16px_32px_rgba(0,0,0,0.18)] transition hover:bg-white"
-              >
-                <strong className="mt-3 block text-3xl font-black text-slate-950">Batalla</strong>
-                <span className="mt-3 block text-sm leading-6 text-slate-600">
-                  Abre el widget del campo completo
-                </span>
-              </button>
+                  <div className="mt-6 max-w-xl rounded-[30px] border border-white/8 bg-[#1d2126] p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Sala compartida</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-50">Sala {normalizedSyncCode}</h2>
+                        <p className="mt-2 text-sm leading-6 text-slate-400">
+                          Esta sala queda enlazada entre dispositivos mientras usen la misma clave.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={leaveRoom}
+                        className="rounded-2xl border border-white/8 bg-[#111315] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-[#23272c]"
+                      >
+                        Abandonar sala
+                      </button>
+                    </div>
+                  </div>
 
-              <button
-                type="button"
-                onClick={() => navigateTo('/config')}
-                className="rounded-[28px] border border-white/8 bg-[#1d2126] px-6 py-8 text-left transition hover:border-white/14 hover:bg-[#23272c]"
-              >
-                <strong className="mt-3 block text-3xl font-black text-slate-50">Administrar</strong>
-                <span className="mt-3 block text-sm leading-6 text-slate-400">
-                  Entra al panel de administracion
-                </span>
-              </button>
-                </div>
+                  <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => navigateTo('/batalla')}
+                      className="rounded-[28px] border border-white/10 bg-slate-100 px-6 py-8 text-left shadow-[0_16px_32px_rgba(0,0,0,0.18)] transition hover:bg-white"
+                    >
+                      <strong className="mt-3 block text-3xl font-black text-slate-950">Batalla</strong>
+                      <span className="mt-3 block text-sm leading-6 text-slate-600">
+                        Abre el widget del campo completo
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => navigateTo('/config')}
+                      className="rounded-[28px] border border-white/8 bg-[#1d2126] px-6 py-8 text-left transition hover:border-white/14 hover:bg-[#23272c]"
+                    >
+                      <strong className="mt-3 block text-3xl font-black text-slate-50">Administrar</strong>
+                      <span className="mt-3 block text-sm leading-6 text-slate-400">
+                        Entra al panel de administracion
+                      </span>
+                    </button>
+                  </div>
               </div>
 
               <div className="rounded-[30px] border border-white/8 bg-[#1d2126] p-5">
@@ -881,6 +992,8 @@ function App() {
             tiktokLiveId={tiktokLiveId}
             bridgeUrl={bridgeUrl}
             syncConnected={syncConnected}
+            syncCode={normalizedSyncCode}
+            syncRemoteEnabled={supabaseRealtimeEnabled}
             presets={normalizedGiftConfigs}
             activeSaws={activeSaws}
             recentEvents={recentEvents}
@@ -896,6 +1009,7 @@ function App() {
             onNavigateBattle={() => navigateTo('/batalla')}
             onResetMonitor={resetMonitorState}
             onDownloadDonations={downloadDonations}
+            onLeaveRoom={leaveRoom}
             donationCount={donationHistory.length}
             activeSection={activeAdminSection}
             simulationPanel={(

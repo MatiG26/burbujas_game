@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { useEffect, useRef, useState } from 'react'
-import { bridgeChannelName, bridgeTransportLabel, getLocalBridgeWebSocketUrl, getSupabaseClient, supabaseRealtimeEnabled } from '../lib/supabase'
+import { bridgeChannelName, bridgeTransportLabel, getLocalBridgeWebSocketUrl, getLocalBridgeWebSocketUrls, getSupabaseClient, supabaseRealtimeEnabled } from '../lib/supabase'
 import type {
   BridgeCommandTransportMessage,
   BridgeCommandMessage,
@@ -38,6 +38,7 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
   const reconnectTimeoutRef = useRef<number | null>(null)
   const pendingConnectRef = useRef<string | null>(null)
   const onGiftRef = useRef(onGift)
+  const socketUrlIndexRef = useRef(0)
 
   useEffect(() => {
     onGiftRef.current = onGift
@@ -102,10 +103,14 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
       }
 
       if (!supabaseRealtimeEnabled) {
-        const socket = new WebSocket(getLocalBridgeWebSocketUrl())
+        const socketUrls = getLocalBridgeWebSocketUrls()
+        const socketUrl = socketUrls[socketUrlIndexRef.current % socketUrls.length]
+        socketUrlIndexRef.current += 1
+        const socket = new WebSocket(socketUrl)
         socketRef.current = socket
 
         socket.addEventListener('open', () => {
+          socketUrlIndexRef.current = 0
           setIsSocketReady(true)
           setStatus((current) => ({
             ...current,
@@ -122,7 +127,7 @@ export function useTikTokLive({ uniqueId, onGift }: UseTikTokLiveOptions): UseTi
           setStatus((current) => ({
             ...current,
             state: current.state === 'connected' ? current.state : 'idle',
-            message: 'Esperando bridge local...',
+            message: socketUrls.length > 1 ? 'Probando otra ruta del bridge local...' : 'Esperando bridge local...',
           }))
         })
 

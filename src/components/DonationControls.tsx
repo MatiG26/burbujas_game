@@ -9,6 +9,8 @@ interface DonationControlsProps {
   tiktokLiveId: string
   bridgeUrl: string
   syncConnected: boolean
+  syncCode: string
+  syncRemoteEnabled: boolean
   presets: GiftConfig[]
   activeSaws: ActiveSawSummary[]
   recentEvents: DonationEvent[]
@@ -24,6 +26,7 @@ interface DonationControlsProps {
   onNavigateBattle: () => void
   onResetMonitor: () => void
   onDownloadDonations: () => void
+  onLeaveRoom: () => void
   donationCount: number
   activeSection: AdminSection
   simulationPanel?: ReactNode
@@ -120,6 +123,8 @@ export function DonationControls({
   tiktokLiveId,
   bridgeUrl,
   syncConnected,
+  syncCode,
+  syncRemoteEnabled,
   presets,
   activeSaws,
   recentEvents,
@@ -135,6 +140,7 @@ export function DonationControls({
   onNavigateBattle,
   onResetMonitor,
   onDownloadDonations,
+  onLeaveRoom,
   donationCount,
   activeSection,
   simulationPanel,
@@ -227,10 +233,19 @@ export function DonationControls({
 
                 <div className="space-y-2 border-l border-white/8 pl-0 text-sm leading-6 text-slate-400 xl:pl-4">
                   <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Estado del bridge</p>
+                  <p>Sala actual: {syncCode || 'sin configurar'}</p>
+                  <p>Sync remoto: {syncRemoteEnabled ? 'disponible' : 'no configurado'}</p>
                   <p className="break-all">Bridge: {bridgeUrl}</p>
                   <p>Sync: {syncConnected ? 'conectado' : 'desconectado'}</p>
                   <p>Estado: {connectionStatus.message}</p>
                   {connectionStatus.roomId ? <p>Room ID: {connectionStatus.roomId}</p> : null}
+                  <button
+                    type="button"
+                    onClick={onLeaveRoom}
+                    className="mt-3 rounded-2xl border border-white/8 bg-[#111315] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-[#23272c]"
+                  >
+                    Abandonar sala
+                  </button>
                 </div>
               </div>
             </section>
