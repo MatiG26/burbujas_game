@@ -57,7 +57,7 @@ export const defaultCanvasSize: CanvasSize = {
 }
 
 export const minSawDiameter = 96
-export const maxSawDiameter = 380
+export const maxSawDiameter = 280
 export const minSawRadius = minSawDiameter / 2
 export const maxSawRadius = maxSawDiameter / 2
 export const bladeLength = 22
@@ -65,7 +65,7 @@ export const bladeBase = 10
 export const bladeSpacing = 24
 export const minBladeCount = 14
 export const maxBladeCount = 180
-export const maxHpForVisualScale = 24000
+export const maxHpForVisualScale = 42000
 export const driftAcceleration = 62
 export const drag = 0.998
 export const restitution = 0.94

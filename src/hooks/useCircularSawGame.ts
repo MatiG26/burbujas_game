@@ -24,6 +24,7 @@ import type {
   GiftApplicationResult,
   LeaderboardEntry,
   SawEntity,
+  SharedGameState,
 } from '../types/game'
 
 interface UseCircularSawGameResult {
@@ -38,6 +39,8 @@ interface UseCircularSawGameResult {
   toggleAudio: () => Promise<boolean>
   resetGame: () => void
   donate: (event: DonationEvent) => GiftApplicationResult
+  getSharedGameState: () => SharedGameState
+  applySharedGameState: (state: SharedGameState) => void
 }
 
 interface ScreenOverlayEffect {
@@ -673,6 +676,23 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     setDonationHistory([])
   }
 
+  function getSharedGameState(): SharedGameState {
+    return {
+      entities: [...entitiesRef.current.values()].map((entity) => ({ ...entity })),
+      leaderboard: [...leaderboardRef.current.values()].map((entry) => ({ ...entry })),
+      recentEvents: recentEvents.map((event) => ({ ...event })),
+      donationHistory: donationHistory.map((event) => ({ ...event })),
+    }
+  }
+
+  function applySharedGameState(state: SharedGameState) {
+    entitiesRef.current = new Map(state.entities.map((entity) => [entity.id, { ...entity }]))
+    leaderboardRef.current = new Map(state.leaderboard.map((entry) => [entry.id, { ...entry }]))
+    setRecentEvents(state.recentEvents.map((event) => ({ ...event })))
+    setDonationHistory(state.donationHistory.map((event) => ({ ...event })))
+    publishSnapshots()
+  }
+
   function findPlayerSaws(playerId: string) {
     return [...entitiesRef.current.values()].filter((entity) => entity.playerId === playerId)
   }
@@ -1150,5 +1170,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     toggleAudio,
     resetGame,
     donate,
+    getSharedGameState,
+    applySharedGameState,
   }
 }

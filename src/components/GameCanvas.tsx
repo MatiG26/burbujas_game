@@ -34,6 +34,13 @@ function formatValue(value: number) {
   }).format(value)
 }
 
+function formatCompactHp(value: number) {
+  return new Intl.NumberFormat('es-ES', {
+    notation: 'compact',
+    maximumFractionDigits: value > 0 && value < 1 ? 2 : 1,
+  }).format(value)
+}
+
 function getTopDonorCardStyles(index: number) {
   if (index === 0) {
     return {
@@ -119,9 +126,9 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                   return (
                     <article
                       key={entry.id}
-                      className={`rounded-2xl border px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${styles.card}`}
+                      className={`min-w-0 rounded-2xl border px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${styles.card}`}
                     >
-                      <div className="flex items-start gap-2">
+                      <div className="flex min-w-0 items-start gap-2">
                         <div className="relative shrink-0">
                           {styles.crown ? (
                             <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-base leading-none">
@@ -143,17 +150,20 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                         </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.24em] ${styles.badge}`}>
                             #{index + 1}
                           </span>
-                          <span className={`text-xs font-semibold ${styles.value}`}>
-                            {formatValue(entry.totalDonated)} HP
+                          <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${styles.value} bg-black/10`}>
+                            {formatCompactHp(entry.totalDonated)} HP
                           </span>
                         </div>
-                        <strong className={`mt-1 block truncate text-xs sm:text-sm ${styles.name}`}>
+                        <strong className={`mt-2 block truncate text-sm font-black sm:text-[15px] ${styles.name}`}>
                           {entry.username}
                         </strong>
+                        <span className={`mt-1 block truncate text-[11px] font-semibold ${styles.value}`}>
+                          {formatValue(entry.currentHp)} HP actual
+                        </span>
                       </div>
                     </div>
                     </article>

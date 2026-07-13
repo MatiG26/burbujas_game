@@ -145,10 +145,13 @@ function App() {
   const pullDistanceRef = useRef(0)
   const isPullRefreshingRef = useRef(false)
   const syncSocketUrlIndexRef = useRef(0)
-  const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, donationHistory, audioEnabled, toggleAudio, resetGame, donate } =
+  const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, donationHistory, audioEnabled, toggleAudio, resetGame, donate, getSharedGameState, applySharedGameState } =
     useCircularSawGame()
   const donateRef = useRef(donate)
   const resetGameRef = useRef(resetGame)
+  const getSharedGameStateRef = useRef(getSharedGameState)
+  const applySharedGameStateRef = useRef(applySharedGameState)
+  const broadcastCurrentGameStateRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     isPullRefreshingRef.current = isPullRefreshing
@@ -157,7 +160,9 @@ function App() {
   useEffect(() => {
     donateRef.current = donate
     resetGameRef.current = resetGame
-  }, [donate, resetGame])
+    getSharedGameStateRef.current = getSharedGameState
+    applySharedGameStateRef.current = applySharedGameState
+  }, [applySharedGameState, donate, getSharedGameState, resetGame])
 
   useEffect(() => {
     if (giftConfigs.length === 0) {
@@ -365,6 +370,7 @@ function App() {
           quantity: 1,
           timestamp: event.timestamp,
         })
+        broadcastCurrentGameStateRef.current()
         return
       }
 
@@ -379,6 +385,7 @@ function App() {
           quantity: Math.max(1, event.repeatCount),
           timestamp: event.timestamp,
         })
+        broadcastCurrentGameStateRef.current()
         return
       }
 
@@ -405,6 +412,7 @@ function App() {
             timestamp: event.timestamp + index,
           })
         }
+        broadcastCurrentGameStateRef.current()
         return
       }
 
@@ -419,6 +427,7 @@ function App() {
           quantity,
           timestamp: event.timestamp,
         })
+        broadcastCurrentGameStateRef.current()
         return
       }
 
@@ -432,6 +441,7 @@ function App() {
         quantity,
         timestamp: event.timestamp,
       })
+      broadcastCurrentGameStateRef.current()
     },
     [donate, giftConfigByImageMap, giftConfigMap, syncGiftImageFromEvent],
   )
@@ -504,8 +514,8 @@ function App() {
       return
     }
 
-    if (message.kind === 'state-snapshot') {
-      pendingSharedMessagesRef.current = pendingSharedMessagesRef.current.filter((pendingMessage) => pendingMessage.kind !== 'state-snapshot')
+    if (message.kind === 'state-snapshot' || message.kind === 'game-state-snapshot') {
+      pendingSharedMessagesRef.current = pendingSharedMessagesRef.current.filter((pendingMessage) => pendingMessage.kind !== message.kind)
     }
 
     pendingSharedMessagesRef.current.push(message)
@@ -522,6 +532,18 @@ function App() {
     setTikTokLiveId(normalizedState.tiktokLiveId)
     setGiftConfigs(normalizedState.giftConfigs)
   }, [setGiftConfigs, setTikTokLiveId])
+
+  const broadcastCurrentGameState = useCallback(() => {
+    broadcastSharedMessage({
+      kind: 'game-state-snapshot',
+      sourceId: instanceId,
+      state: getSharedGameStateRef.current(),
+    })
+  }, [broadcastSharedMessage, instanceId])
+
+  useEffect(() => {
+    broadcastCurrentGameStateRef.current = broadcastCurrentGameState
+  }, [broadcastCurrentGameState])
 
   useEffect(() => {
     const supabase = getSupabaseClient()
@@ -559,6 +581,10 @@ function App() {
             kind: 'state-request',
             sourceId: instanceId,
           })
+          broadcastSharedMessage({
+            kind: 'game-state-request',
+            sourceId: instanceId,
+          })
         })
 
         socket.addEventListener('message', (messageEvent) => {
@@ -574,6 +600,16 @@ function App() {
 
           if (payload.kind === 'manual-donation') {
             donateRef.current(payload.event)
+            return
+          }
+
+          if (payload.kind === 'game-state-request') {
+            broadcastCurrentGameState()
+            return
+          }
+
+          if (payload.kind === 'game-state-snapshot') {
+            applySharedGameStateRef.current(payload.state)
             return
           }
 
@@ -654,6 +690,16 @@ function App() {
         return
       }
 
+      if (message.kind === 'game-state-request') {
+        broadcastCurrentGameState()
+        return
+      }
+
+      if (message.kind === 'game-state-snapshot') {
+        applySharedGameStateRef.current(message.state)
+        return
+      }
+
       if (message.kind === 'reset-game') {
         resetGameRef.current()
         return
@@ -684,6 +730,10 @@ function App() {
           kind: 'state-request',
           sourceId: instanceId,
         })
+        broadcastSharedMessage({
+          kind: 'game-state-request',
+          sourceId: instanceId,
+        })
         return
       }
 
@@ -701,7 +751,7 @@ function App() {
       }
       void supabase.removeChannel(channel)
     }
-  }, [appSyncChannelName, applySharedState, broadcastSharedMessage, flushPendingSharedMessages, hasValidSyncCode, instanceId])
+  }, [appSyncChannelName, applySharedState, broadcastCurrentGameState, broadcastSharedMessage, flushPendingSharedMessages, hasValidSyncCode, instanceId])
 
   useEffect(() => {
     if (!syncChannelRef.current && syncSocketRef.current?.readyState !== WebSocket.OPEN) {
@@ -736,7 +786,8 @@ function App() {
       sourceId: instanceId,
       event,
     })
-  }, [avatarUrl, broadcastSharedMessage, donate, instanceId, username])
+    broadcastCurrentGameState()
+  }, [avatarUrl, broadcastCurrentGameState, broadcastSharedMessage, donate, instanceId, username])
 
   const resetMonitorState = useCallback(() => {
     resetGame()
@@ -744,7 +795,8 @@ function App() {
       kind: 'reset-game',
       sourceId: instanceId,
     })
-  }, [broadcastSharedMessage, instanceId, resetGame])
+    broadcastCurrentGameState()
+  }, [broadcastCurrentGameState, broadcastSharedMessage, instanceId, resetGame])
 
   const downloadDonations = useCallback(() => {
     const serializedHistory = donationHistory.map((event) => ({

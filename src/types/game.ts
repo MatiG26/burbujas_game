@@ -132,6 +132,13 @@ export interface SharedAppState {
   giftConfigs: GiftConfig[]
 }
 
+export interface SharedGameState {
+  entities: SawEntity[]
+  leaderboard: LeaderboardEntry[]
+  recentEvents: DonationEvent[]
+  donationHistory: DonationEvent[]
+}
+
 export type SharedAppMessage =
   | {
     kind: 'manual-donation'
@@ -143,9 +150,18 @@ export type SharedAppMessage =
     sourceId: string
   }
   | {
+    kind: 'game-state-request'
+    sourceId: string
+  }
+  | {
     kind: 'state-snapshot'
     sourceId: string
     state: SharedAppState
+  }
+  | {
+    kind: 'game-state-snapshot'
+    sourceId: string
+    state: SharedGameState
   }
   | {
     kind: 'reset-game'

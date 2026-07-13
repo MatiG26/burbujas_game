@@ -56,6 +56,13 @@ interface SharedAppState {
   giftConfigs: SharedGiftConfig[]
 }
 
+interface SharedGameState {
+  entities: Array<Record<string, unknown>>
+  leaderboard: Array<Record<string, unknown>>
+  recentEvents: Array<Record<string, unknown>>
+  donationHistory: Array<Record<string, unknown>>
+}
+
 type SharedAppMessage =
   | {
     kind: 'manual-donation'
@@ -77,9 +84,22 @@ type SharedAppMessage =
     sourceId: string
   }
   | {
+    kind: 'game-state-request'
+    sourceId: string
+  }
+  | {
     kind: 'state-snapshot'
     sourceId: string
     state: SharedAppState
+  }
+  | {
+    kind: 'game-state-snapshot'
+    sourceId: string
+    state: SharedGameState
+  }
+  | {
+    kind: 'reset-game'
+    sourceId: string
   }
 
 interface BridgeCommandTransportMessage {
