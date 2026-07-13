@@ -147,10 +147,17 @@ function App() {
   const syncSocketUrlIndexRef = useRef(0)
   const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, donationHistory, audioEnabled, toggleAudio, resetGame, donate } =
     useCircularSawGame()
+  const donateRef = useRef(donate)
+  const resetGameRef = useRef(resetGame)
 
   useEffect(() => {
     isPullRefreshingRef.current = isPullRefreshing
   }, [isPullRefreshing])
+
+  useEffect(() => {
+    donateRef.current = donate
+    resetGameRef.current = resetGame
+  }, [donate, resetGame])
 
   useEffect(() => {
     if (giftConfigs.length === 0) {
@@ -566,12 +573,12 @@ function App() {
           }
 
           if (payload.kind === 'manual-donation') {
-            donate(payload.event)
+            donateRef.current(payload.event)
             return
           }
 
           if (payload.kind === 'reset-game') {
-            resetGame()
+            resetGameRef.current()
             return
           }
 
@@ -643,12 +650,12 @@ function App() {
       }
 
       if (message.kind === 'manual-donation') {
-        donate(message.event)
+        donateRef.current(message.event)
         return
       }
 
       if (message.kind === 'reset-game') {
-        resetGame()
+        resetGameRef.current()
         return
       }
 
@@ -694,7 +701,7 @@ function App() {
       }
       void supabase.removeChannel(channel)
     }
-  }, [appSyncChannelName, applySharedState, broadcastSharedMessage, donate, flushPendingSharedMessages, hasValidSyncCode, instanceId, resetGame])
+  }, [appSyncChannelName, applySharedState, broadcastSharedMessage, flushPendingSharedMessages, hasValidSyncCode, instanceId])
 
   useEffect(() => {
     if (!syncChannelRef.current && syncSocketRef.current?.readyState !== WebSocket.OPEN) {
