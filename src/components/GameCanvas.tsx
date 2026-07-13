@@ -23,7 +23,8 @@ interface GameCanvasProps {
   topDonors?: LeaderboardEntry[]
   gifts?: GiftConfig[]
   audioEnabled?: boolean
-  onEnableAudio?: () => void
+  onToggleAudio?: () => void
+  onTopDonorsSecretTap?: () => void
 }
 
 function formatValue(value: number) {
@@ -63,7 +64,7 @@ function getTopDonorCardStyles(index: number) {
   }
 }
 
-export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = false, topDonors = [], gifts = [], audioEnabled = false, onEnableAudio }: GameCanvasProps) {
+export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = false, topDonors = [], gifts = [], audioEnabled = false, onToggleAudio, onTopDonorsSecretTap }: GameCanvasProps) {
   if (fullscreen) {
     return (
       <section className="relative flex h-screen flex-col overflow-hidden bg-[linear-gradient(180deg,#0d6d82_0%,#09536d_45%,#083a57_100%)] px-3 py-3 sm:px-4">
@@ -71,22 +72,44 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
 
         <div className="relative z-10 shrink-0">
           <div className="grid gap-3">
-            {!audioEnabled ? (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={onEnableAudio}
-                  className="pointer-events-auto rounded-2xl border border-emerald-300/30 bg-emerald-400/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-emerald-400/25"
-                >
-                  Activar sonido
-                </button>
-              </div>
-            ) : null}
-
-            <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-md">
+            <div className="relative rounded-3xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-md">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] uppercase tracking-[0.28em] text-sky-100/75">Top 3 donadores</p>
-                <span className="text-[10px] uppercase tracking-[0.24em] text-slate-400">En vivo</span>
+                <div className="flex items-center text-[10px] uppercase tracking-[0.28em] text-sky-100/75">
+                  <span>Top</span>
+                  {onTopDonorsSecretTap ? (
+                    <button
+                      type="button"
+                      onClick={onTopDonorsSecretTap}
+                      aria-label="Ir al inicio"
+                      className="pointer-events-auto mx-1 rounded-sm px-0.5 text-sky-100/75"
+                    >
+                      3
+                    </button>
+                  ) : (
+                    <span className="mx-1">3</span>
+                  )}
+                  <span>donadores</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.24em] text-slate-400">En vivo</span>
+                  <button
+                    type="button"
+                    onClick={onToggleAudio}
+                    aria-label={audioEnabled ? 'Silenciar sonido' : 'Activar sonido'}
+                    className={`pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full border transition ${audioEnabled ? 'border-emerald-300/30 bg-emerald-400/15 text-emerald-100' : 'border-white/10 bg-white/10 text-slate-200 hover:bg-white/20'}`}
+                  >
+                    {audioEnabled ? (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                        <path fill="currentColor" d="M14 8.82v6.36a4.5 4.5 0 0 0 0-6.36Zm2.5-2.95v2.16a8 8 0 0 1 0 8v2.1a10 10 0 0 0 0-12.26ZM3 10v4h4l5 4V6L7 10H3Z" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                        <path fill="currentColor" d="M3 10v4h4l5 4V6L7 10H3Z" />
+                        <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M5 5 19 19" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-2">

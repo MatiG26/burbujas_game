@@ -134,7 +134,7 @@ function App() {
   const syncSocketRef = useRef<WebSocket | null>(null)
   const sharedStateRef = useRef<SharedAppState | null>(null)
   const skippedSharedStateRef = useRef<string | null>(null)
-  const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, audioEnabled, enableAudio, donate } =
+  const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, audioEnabled, toggleAudio, donate } =
     useCircularSawGame()
 
   useEffect(() => {
@@ -475,8 +475,6 @@ function App() {
     })
   }, [broadcastSharedMessage, instanceId, sharedAppState, sharedAppStateSerialized])
 
-  const battleUrl = `${window.location.origin}/batalla`
-  const configUrl = `${window.location.origin}/config`
   const canTriggerManualGift = username.trim().length > 0
 
   const triggerManualDonation = useCallback((preset: GiftConfig) => {
@@ -504,6 +502,15 @@ function App() {
     window.history.pushState({}, '', pathname)
     setRoute(getCurrentRoute())
   }, [])
+
+  const navigateBack = useCallback(() => {
+    if (window.history.length > 1) {
+      window.history.back()
+      return
+    }
+
+    navigateTo('/')
+  }, [navigateTo])
 
   function updateGiftConfig(giftId: string, field: keyof GiftConfig, value: string | number | boolean) {
     setGiftConfigs((current) =>
@@ -536,9 +543,10 @@ function App() {
           topDonors={topDonors}
           gifts={enabledGiftConfigs}
           audioEnabled={audioEnabled}
-          onEnableAudio={() => {
-            void enableAudio()
+          onToggleAudio={() => {
+            void toggleAudio()
           }}
+          onTopDonorsSecretTap={() => navigateTo('/')}
         />
       </main>
     )
@@ -546,86 +554,63 @@ function App() {
 
   if (route === 'home') {
     return (
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top,#79e6f2_0%,rgba(121,230,242,0)_24%),linear-gradient(180deg,#114a60_0%,#0a293a_52%,#05131d_100%)] px-4 py-5 text-white sm:px-6 lg:px-8">
+      <main className="min-h-screen bg-[#111315] px-4 py-5 text-slate-50 sm:px-6 lg:px-8">
         <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-6xl items-center justify-center">
-          <section className="w-full overflow-hidden rounded-[38px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.1),rgba(2,6,23,0.48))] p-6 shadow-[0_30px_100px_rgba(2,12,27,0.45)] backdrop-blur-xl sm:p-8 lg:p-10">
+          <section className="w-full overflow-hidden rounded-[36px] border border-white/8 bg-[#17191c] p-6 shadow-[0_24px_50px_rgba(0,0,0,0.22)] sm:p-8 lg:p-10">
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-center">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.38em] text-cyan-100/70">Circular Saw</p>
-                <h1 className="mt-3 text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
-              Elige a donde entrar
+                <p className="text-[11px] uppercase tracking-[0.38em] text-slate-500">Circular Saw</p>
+                <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-50 sm:text-5xl lg:text-6xl">
+              Inicio
                 </h1>
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-cyan-50/78 sm:text-base">
-              Usa batalla para abrir el campo limpio del juego y config para conectar TikTok,
-              editar regalos y lanzar pruebas manuales.
-                </p>
-
-                <div className="mt-6 flex flex-wrap gap-3 text-sm text-cyan-50/78">
-                  <span className="rounded-full border border-white/10 bg-white/8 px-4 py-2">Widget para OBS</span>
-                  <span className="rounded-full border border-white/10 bg-white/8 px-4 py-2">Control desde celular</span>
-                  <span className="rounded-full border border-white/10 bg-white/8 px-4 py-2">TikTok Live</span>
-                </div>
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => navigateTo('/batalla')}
-                className="rounded-[30px] border border-cyan-100/20 bg-[linear-gradient(160deg,rgba(94,234,212,0.26),rgba(8,145,178,0.2))] px-6 py-8 text-left shadow-[0_20px_60px_rgba(8,145,178,0.2)] transition hover:border-cyan-100/35 hover:bg-[linear-gradient(160deg,rgba(94,234,212,0.34),rgba(8,145,178,0.28))]"
+                className="rounded-[28px] border border-white/10 bg-slate-100 px-6 py-8 text-left shadow-[0_16px_32px_rgba(0,0,0,0.18)] transition hover:bg-white"
               >
-                <span className="block text-xs uppercase tracking-[0.32em] text-cyan-100/70">Ruta</span>
-                <strong className="mt-3 block text-3xl font-black text-white">Batalla</strong>
-                <span className="mt-3 block text-sm leading-6 text-cyan-50/75">
-                  Abre el widget del campo completo en /batalla.
+                <strong className="mt-3 block text-3xl font-black text-slate-950">Batalla</strong>
+                <span className="mt-3 block text-sm leading-6 text-slate-600">
+                  Abre el widget del campo completo
                 </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => navigateTo('/config')}
-                className="rounded-[30px] border border-white/10 bg-[linear-gradient(160deg,rgba(255,255,255,0.12),rgba(15,23,42,0.38))] px-6 py-8 text-left shadow-[0_20px_60px_rgba(15,23,42,0.28)] transition hover:border-white/20 hover:bg-[linear-gradient(160deg,rgba(255,255,255,0.18),rgba(15,23,42,0.48))]"
+                className="rounded-[28px] border border-white/8 bg-[#1d2126] px-6 py-8 text-left transition hover:border-white/14 hover:bg-[#23272c]"
               >
-                <span className="block text-xs uppercase tracking-[0.32em] text-slate-200/70">Ruta</span>
-                <strong className="mt-3 block text-3xl font-black text-white">Administrar</strong>
-                <span className="mt-3 block text-sm leading-6 text-slate-200/78">
-                  Entra al panel de administracion en /config.
+                <strong className="mt-3 block text-3xl font-black text-slate-50">Administrar</strong>
+                <span className="mt-3 block text-sm leading-6 text-slate-400">
+                  Entra al panel de administracion
                 </span>
               </button>
                 </div>
-
-                <div className="mt-8 grid gap-3 text-xs text-slate-200/80 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
-                <span className="block uppercase tracking-[0.24em] text-slate-300/55">Batalla</span>
-                <strong className="mt-1 block text-sm text-white">{battleUrl}</strong>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
-                <span className="block uppercase tracking-[0.24em] text-slate-300/55">Config</span>
-                <strong className="mt-1 block text-sm text-white">{configUrl}</strong>
-              </div>
-                </div>
               </div>
 
-              <div className="rounded-[30px] border border-white/10 bg-slate-950/22 p-5">
-                <p className="text-[10px] uppercase tracking-[0.28em] text-slate-200/70">Flujo recomendado</p>
-                <div className="mt-4 space-y-3 text-sm text-slate-100/88">
+              <div className="rounded-[30px] border border-white/8 bg-[#1d2126] p-5">
+                <p className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Flujo recomendado</p>
+                <div className="mt-4 space-y-3 text-sm text-slate-300">
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-300/14 text-xs font-black text-cyan-100">1</span>
+                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-slate-950">1</span>
                     <div>
-                      <strong className="block text-white">Abre Administrar</strong>
-                      <span className="text-slate-300/78">Conecta el live y ajusta premios.</span>
+                      <strong className="block text-slate-50">Abre Administrar</strong>
+                      <span className="text-slate-400">Conecta el live y ajusta premios.</span>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-300/14 text-xs font-black text-emerald-100">2</span>
+                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-[#111315] text-xs font-black text-slate-200">2</span>
                     <div>
-                      <strong className="block text-white">Lanza Batalla</strong>
-                      <span className="text-slate-300/78">Muestra el campo limpio en PC u OBS.</span>
+                      <strong className="block text-slate-50">Lanza Batalla</strong>
+                      <span className="text-slate-400">Muestra el campo limpio en PC u OBS.</span>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-orange-300/14 text-xs font-black text-orange-100">3</span>
+                    <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-[#111315] text-xs font-black text-slate-200">3</span>
                     <div>
-                      <strong className="block text-white">Prueba o transmite</strong>
-                      <span className="text-slate-300/78">Simula regalos o espera los eventos reales.</span>
+                      <strong className="block text-slate-50">Prueba o transmite</strong>
+                      <span className="text-slate-400">Simula regalos o espera los eventos reales.</span>
                     </div>
                   </div>
                 </div>
@@ -638,41 +623,8 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.22),transparent_24%),linear-gradient(180deg,#0d3042_0%,#071825_48%,#041019_100%)] px-3 py-3 text-slate-100 sm:px-5 sm:py-4 lg:px-8">
+    <main className="min-h-screen bg-[#111315] px-3 pb-28 pt-3 text-slate-50 sm:px-5 sm:pb-32 sm:pt-4 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1800px] gap-4 sm:min-h-[calc(100vh-2.5rem)]">
-        <section className="sticky top-0 z-30 overflow-hidden rounded-[22px] border border-white/10 bg-[linear-gradient(150deg,rgba(255,255,255,0.06),rgba(2,6,23,0.72))] px-3 py-2 shadow-[0_24px_80px_rgba(2,6,23,0.35)] backdrop-blur-xl sm:px-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-3">
-              <p className="text-[10px] uppercase tracking-[0.34em] text-sky-200/75">Administrar</p>
-              <span className="hidden text-sm text-slate-300/78 sm:inline">/config administra y /batalla muestra el widget.</span>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => navigateTo('/batalla')}
-                className="rounded-full border border-emerald-300/25 bg-emerald-400/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400/25"
-              >
-                Batalla
-              </button>
-              <button
-                type="button"
-                onClick={() => navigateTo('/')}
-                className="rounded-full border border-cyan-200/20 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-300/20"
-              >
-                Inicio
-              </button>
-              <button
-                type="button"
-                onClick={() => navigateTo('/config')}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
-              >
-                Administrar
-              </button>
-            </div>
-          </div>
-        </section>
-
         <DonationControls
           username={username}
           avatarUrl={avatarUrl}
@@ -689,6 +641,8 @@ function App() {
           onAddGiftConfig={addGiftConfig}
           onConnectTikTok={connect}
           onDisconnectTikTok={disconnect}
+          onNavigateBack={navigateBack}
+          onNavigateBattle={() => navigateTo('/batalla')}
           activeSection={activeAdminSection}
           simulationPanel={(
             <GiftMenuStrip

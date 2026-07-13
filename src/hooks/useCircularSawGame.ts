@@ -34,6 +34,7 @@ interface UseCircularSawGameResult {
   recentEvents: DonationEvent[]
   audioEnabled: boolean
   enableAudio: () => Promise<boolean>
+  toggleAudio: () => Promise<boolean>
   donate: (event: DonationEvent) => GiftApplicationResult
 }
 
@@ -217,11 +218,7 @@ function updateSpecialMotion(entity: SawEntity, dt: number, now: number, size: C
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D, size: CanvasSize) {
-  const gradient = ctx.createLinearGradient(0, 0, size.width, size.height)
-  gradient.addColorStop(0, 'rgba(14, 26, 43, 0.12)')
-  gradient.addColorStop(1, 'rgba(7, 12, 20, 0.22)')
-  ctx.fillStyle = gradient
-  ctx.fillRect(0, 0, size.width, size.height)
+  ctx.clearRect(0, 0, size.width, size.height)
 }
 
 function ensureAvatar(cache: Map<string, HTMLImageElement>, avatarUrl: string) {
@@ -621,6 +618,16 @@ export function useCircularSawGame(): UseCircularSawGameResult {
       setAudioEnabled(false)
       return false
     }
+  }
+
+  async function toggleAudio() {
+    if (audioEnabledRef.current) {
+      audioEnabledRef.current = false
+      setAudioEnabled(false)
+      return false
+    }
+
+    return enableAudio()
   }
 
   function publishSnapshots() {
@@ -1121,6 +1128,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     recentEvents,
     audioEnabled,
     enableAudio,
+    toggleAudio,
     donate,
   }
 }

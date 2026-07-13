@@ -19,6 +19,8 @@ interface DonationControlsProps {
   onAddGiftConfig: () => void
   onConnectTikTok: () => void
   onDisconnectTikTok: () => void
+  onNavigateBack: () => void
+  onNavigateBattle: () => void
   activeSection: AdminSection
   simulationPanel?: ReactNode
   leaderboardPanel?: ReactNode
@@ -120,41 +122,47 @@ export function DonationControls({
   onAddGiftConfig,
   onConnectTikTok,
   onDisconnectTikTok,
+  onNavigateBack,
+  onNavigateBattle,
   activeSection,
   simulationPanel,
   leaderboardPanel,
 }: DonationControlsProps) {
   const [openGiftId, setOpenGiftId] = useState<string | null>(null)
 
-  const sections: Array<{ id: AdminSection; label: string; hint: string }> = [
-    { id: 'connect', label: 'Conectar', hint: 'Live y bridge' },
-    { id: 'simulate', label: 'Simular', hint: 'Pruebas manuales' },
-    { id: 'gifts', label: 'Premios', hint: 'Regalos y reglas' },
-    { id: 'monitor', label: 'Monitorear', hint: 'Feed y ranking' },
-  ]
-
-  const activeSectionMeta = sections.find((section) => section.id === activeSection)
-
   return (
-    <aside className="relative overflow-hidden rounded-[32px] border border-white/12 bg-[linear-gradient(180deg,rgba(8,47,73,0.82),rgba(3,10,22,0.94))] shadow-[0_28px_90px_rgba(3,10,22,0.45)] backdrop-blur-xl">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.18),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.12),transparent_30%)]" />
+    <aside className="overflow-hidden rounded-[28px] border border-white/8 bg-[#17191c] shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+      <div>
+        <div className="border-b border-white/8 px-4 py-4 sm:px-5 lg:px-6">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onNavigateBack}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/8 bg-[#111315] text-slate-200 transition hover:bg-[#23272c]"
+              aria-label="Volver"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+                <path fill="currentColor" d="M14.71 6.29a1 1 0 0 1 0 1.42L10.41 12l4.3 4.29a1 1 0 0 1-1.42 1.42l-5-5a1 1 0 0 1 0-1.42l5-5a1 1 0 0 1 1.42 0Z" />
+              </svg>
+            </button>
 
-      <div className="relative z-10">
-        <div className="border-b border-white/10 px-4 py-3 sm:px-5 lg:px-6">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <p className="text-[10px] uppercase tracking-[0.34em] text-cyan-100/72">Administrar</p>
-                <h2 className="text-lg font-black tracking-tight text-white sm:text-xl">{activeSectionMeta?.label}</h2>
-                <span className="text-xs text-slate-300/70">{activeSectionMeta?.hint}</span>
-              </div>
+            <div className="min-w-0 flex-1 px-2 text-center">
+              <h2 className="truncate text-base font-black tracking-tight text-slate-50 sm:text-lg">Administracion</h2>
             </div>
 
-            <div className="flex flex-wrap gap-2 text-[11px] text-slate-200/85">
-              <span className="rounded-full border border-cyan-200/15 bg-cyan-300/8 px-3 py-1.5">{getBridgeLabel(connectionStatus.state)}</span>
-              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{getArenaLabel(activeSaws.length)}</span>
-              <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">{getFeedLabel(recentEvents.length)}</span>
-            </div>
+            <button
+              type="button"
+              onClick={onNavigateBattle}
+              className="rounded-full border border-white/10 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white"
+            >
+              ir a Batalla
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+            <span className="rounded-full border border-white/8 bg-[#111315] px-3 py-1.5">{getBridgeLabel(connectionStatus.state)}</span>
+            <span className="rounded-full border border-white/8 bg-[#111315] px-3 py-1.5">{getArenaLabel(activeSaws.length)}</span>
+            <span className="rounded-full border border-white/8 bg-[#111315] px-3 py-1.5">{getFeedLabel(recentEvents.length)}</span>
           </div>
         </div>
 
@@ -163,25 +171,25 @@ export function DonationControls({
             <section className="space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h3 className="text-lg font-black text-white">TikTok Live Bridge</h3>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-200/74">
+                  <h3 className="text-lg font-black text-slate-50">TikTok Live Bridge</h3>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-400">
                     Conecta el live remoto y comparte los eventos con cualquier dispositivo que tenga abierto el panel o la batalla.
                   </p>
                 </div>
-                <span className={`w-fit rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.24em] ${connectionStatus.state === 'connected' ? 'bg-emerald-400/20 text-emerald-200' : connectionStatus.state === 'connecting' ? 'bg-amber-400/20 text-amber-100' : connectionStatus.state === 'error' ? 'bg-rose-400/20 text-rose-100' : 'bg-white/10 text-slate-300'}`}>
+                <span className={`w-fit rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.24em] ${connectionStatus.state === 'connected' ? 'bg-emerald-950/60 text-emerald-300' : connectionStatus.state === 'connecting' ? 'bg-amber-950/60 text-amber-300' : connectionStatus.state === 'error' ? 'bg-rose-950/60 text-rose-300' : 'bg-[#111315] text-slate-400'}`}>
                   {connectionStatus.state}
                 </span>
               </div>
 
               <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                <div className="space-y-4 rounded-[24px] border border-white/10 bg-slate-950/28 p-4">
-                  <label className="block text-sm font-medium text-slate-100">
+                <div className="space-y-4 rounded-[24px] border border-white/8 bg-[#1d2126] p-4">
+                  <label className="block text-sm font-medium text-slate-300">
                     Usuario del live
                     <input
                       value={tiktokLiveId}
                       onChange={(event) => onTikTokLiveIdChange(event.target.value)}
                       placeholder="@tu_canal o URL completa"
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3.5 text-sm text-white outline-none transition focus:border-cyan-300/70"
+                      className="mt-2 w-full rounded-2xl border border-white/8 bg-[#111315] px-4 py-3.5 text-sm text-slate-50 outline-none transition focus:border-slate-500"
                     />
                   </label>
 
@@ -190,22 +198,22 @@ export function DonationControls({
                       type="button"
                       onClick={onConnectTikTok}
                       disabled={!tiktokLiveId.trim()}
-                      className="rounded-2xl border border-cyan-200/25 bg-cyan-300/15 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-2xl border border-white/10 bg-slate-100 px-4 py-3.5 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Conectar live
                     </button>
                     <button
                       type="button"
                       onClick={onDisconnectTikTok}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+                      className="rounded-2xl border border-white/8 bg-[#111315] px-4 py-3.5 text-sm font-semibold text-slate-300 transition hover:bg-[#23272c]"
                     >
                       Desconectar
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-2 border-l border-white/10 pl-0 text-sm leading-6 text-slate-300/80 xl:pl-4">
-                  <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400/75">Estado del bridge</p>
+                <div className="space-y-2 border-l border-white/8 pl-0 text-sm leading-6 text-slate-400 xl:pl-4">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Estado del bridge</p>
                   <p className="break-all">Bridge: {bridgeUrl}</p>
                   <p>Estado: {connectionStatus.message}</p>
                   {connectionStatus.roomId ? <p>Room ID: {connectionStatus.roomId}</p> : null}
@@ -219,31 +227,31 @@ export function DonationControls({
               <section className="space-y-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-black text-white sm:text-xl">Datos del jugador</h3>
+                    <h3 className="text-lg font-black text-slate-50 sm:text-xl">Datos del jugador</h3>
                   </div>
-                  <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-slate-300">
+                  <div className="rounded-full border border-white/8 bg-[#111315] px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-slate-400">
                     Modo prueba
                   </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block text-sm font-medium text-slate-100">
+                  <label className="block text-sm font-medium text-slate-300">
                     Usuario manual
                     <input
                       value={username}
                       onChange={(event) => onUsernameChange(event.target.value)}
                       placeholder="Ej. PlayerOne"
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3.5 text-sm text-white outline-none transition focus:border-orange-300/70"
+                      className="mt-2 w-full rounded-2xl border border-white/8 bg-[#111315] px-4 py-3.5 text-sm text-slate-50 outline-none transition focus:border-slate-500"
                     />
                   </label>
 
-                  <label className="block text-sm font-medium text-slate-100">
+                  <label className="block text-sm font-medium text-slate-300">
                     URL del avatar manual
                     <input
                       value={avatarUrl}
                       onChange={(event) => onAvatarUrlChange(event.target.value)}
                       placeholder="https://..."
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3.5 text-sm text-white outline-none transition focus:border-orange-300/70"
+                      className="mt-2 w-full rounded-2xl border border-white/8 bg-[#111315] px-4 py-3.5 text-sm text-slate-50 outline-none transition focus:border-slate-500"
                     />
                   </label>
                 </div>
@@ -257,13 +265,13 @@ export function DonationControls({
             <section className="space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-xl font-black text-white">Configuracion de premios</h3>
+                  <h3 className="text-xl font-black text-slate-50">Configuracion de premios</h3>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <button
                     type="button"
                     onClick={onAddGiftConfig}
-                    className="rounded-2xl border border-emerald-300/25 bg-emerald-400/15 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-emerald-400/25"
+                    className="rounded-2xl border border-white/10 bg-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-white"
                   >
                     Agregar donacion
                   </button>
@@ -271,7 +279,7 @@ export function DonationControls({
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-[24px] border border-white/10 bg-slate-950/24">
+              <div className="overflow-hidden rounded-[24px] border border-white/8 bg-[#1d2126]">
                 {presets.map((preset) => (
                   <div key={preset.id} className="border-b border-white/8 last:border-b-0">
                     <button
@@ -280,25 +288,25 @@ export function DonationControls({
                       className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
                     >
                       <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/8 p-1.5">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#111315] p-1.5">
                           {preset.imageUrl ? (
                             <img src={preset.imageUrl} alt={preset.giftName} className="h-full w-full object-contain" />
                           ) : (
-                            <span className="text-[10px] font-bold uppercase text-slate-400">Gift</span>
+                            <span className="text-[10px] font-bold uppercase text-slate-500">Gift</span>
                           )}
                         </div>
                         <div className="min-w-0">
-                          <strong className="block truncate text-sm text-white">{preset.giftName || 'Nuevo regalo'}</strong>
+                          <strong className="block truncate text-sm text-slate-50">{preset.giftName || 'Nuevo regalo'}</strong>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
                             <span>{preset.hpReward} HP</span>
-                            <span className={`rounded-full px-2 py-0.5 ${preset.enabled ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/10 text-slate-400'}`}>
+                            <span className={`rounded-full px-2 py-0.5 ${preset.enabled ? 'bg-emerald-950/60 text-emerald-300' : 'bg-[#111315] text-slate-500'}`}>
                               {preset.enabled ? 'Visible' : 'Oculto'}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <span className={`shrink-0 text-slate-300 transition ${openGiftId === preset.id ? 'rotate-180' : ''}`}>
+                      <span className={`shrink-0 text-slate-400 transition ${openGiftId === preset.id ? 'rotate-180' : ''}`}>
                         <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
                           <path fill="currentColor" d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41Z" />
                         </svg>
@@ -312,7 +320,7 @@ export function DonationControls({
                           <input
                             value={preset.giftName}
                             onChange={(event) => onGiftConfigChange(preset.id, 'giftName', event.target.value)}
-                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-3 text-sm text-white outline-none focus:border-orange-400/60"
+                            className="mt-2 w-full rounded-2xl border border-white/8 bg-[#111315] px-3 py-3 text-sm text-slate-50 outline-none focus:border-slate-500"
                           />
                         </label>
                         <label className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
@@ -320,7 +328,7 @@ export function DonationControls({
                           <input
                             value={preset.imageUrl}
                             onChange={(event) => onGiftConfigChange(preset.id, 'imageUrl', event.target.value)}
-                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-3 text-sm text-white outline-none focus:border-orange-400/60"
+                            className="mt-2 w-full rounded-2xl border border-white/8 bg-[#111315] px-3 py-3 text-sm text-slate-50 outline-none focus:border-slate-500"
                           />
                         </label>
                         <label className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
@@ -330,7 +338,7 @@ export function DonationControls({
                             min="0"
                             value={preset.hpReward}
                             onChange={(event) => onGiftConfigChange(preset.id, 'hpReward', Number(event.target.value))}
-                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-3 text-sm text-white outline-none focus:border-orange-400/60"
+                            className="mt-2 w-full rounded-2xl border border-white/8 bg-[#111315] px-3 py-3 text-sm text-slate-50 outline-none focus:border-slate-500"
                           />
                         </label>
                         <label className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
@@ -338,7 +346,7 @@ export function DonationControls({
                           <select
                             value={preset.action}
                             onChange={(event) => onGiftConfigChange(preset.id, 'action', event.target.value)}
-                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-3 text-sm text-white outline-none focus:border-orange-400/60"
+                            className="mt-2 w-full rounded-2xl border border-white/8 bg-[#111315] px-3 py-3 text-sm text-slate-50 outline-none focus:border-slate-500"
                           >
                             <option value="boost">Sumar HP</option>
                             <option value="split">Dividir sierra</option>
@@ -346,7 +354,7 @@ export function DonationControls({
                             <option value="boxing">Golpe de boxeo</option>
                           </select>
                         </label>
-                        <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/28 px-3 py-3 text-xs font-medium uppercase tracking-[0.2em] text-slate-300 sm:col-span-2 xl:col-span-1 xl:self-end">
+                        <label className="flex items-center gap-3 rounded-2xl border border-white/8 bg-[#111315] px-3 py-3 text-xs font-medium uppercase tracking-[0.2em] text-slate-300 sm:col-span-2 xl:col-span-1 xl:self-end">
                           <input
                             type="checkbox"
                             checked={preset.enabled}
@@ -368,23 +376,23 @@ export function DonationControls({
               <div className="grid gap-4">
                 <section className="space-y-4">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-300/70">
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-400">
                       Sierras activas
                     </h3>
                     <span className="text-xs text-slate-400">{activeSaws.length} en arena</span>
                   </div>
 
-                  <div className="overflow-hidden rounded-[24px] border border-white/10 bg-slate-950/24">
+                  <div className="overflow-hidden rounded-[24px] border border-white/8 bg-[#1d2126]">
                     {activeSaws.slice(0, 5).map((saw) => (
                       <article
                         key={saw.id}
                         className="border-b border-white/8 p-3.5 last:border-b-0"
                       >
-                        <div className="flex items-center justify-between gap-3 text-sm text-white">
+                        <div className="flex items-center justify-between gap-3 text-sm text-slate-50">
                           <strong className="truncate">{saw.username}</strong>
                           <span>{formatCompact(saw.hp)} HP</span>
                         </div>
-                        <div className="mt-3 h-2 rounded-full bg-slate-800">
+                        <div className="mt-3 h-2 rounded-full bg-[#111315]">
                           <div
                             className="h-full rounded-full bg-[linear-gradient(90deg,#fb923c,#facc15)]"
                             style={{ width: `${Math.max(8, Math.min(100, (saw.hp / Math.max(saw.maxHp, 1)) * 100))}%` }}
@@ -406,24 +414,24 @@ export function DonationControls({
                 </section>
 
                 <section className="space-y-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-300/70">
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-400">
                     Feed reciente
                   </h3>
-                  <div className="overflow-hidden rounded-[24px] border border-white/10 bg-slate-950/24 text-sm text-slate-300/85">
+                  <div className="overflow-hidden rounded-[24px] border border-white/8 bg-[#1d2126] text-sm text-slate-400">
                     {recentEvents.map((event) => (
                       <div
                         key={`${event.username}-${event.timestamp}`}
                         className="flex items-center justify-between gap-3 border-b border-white/8 px-3 py-3 last:border-b-0"
                       >
                         <span className="truncate">{event.username}</span>
-                        <span className="whitespace-nowrap text-orange-200">
+                        <span className="whitespace-nowrap text-slate-100">
                           {event.action === 'split' ? `${event.sourceLabel}: divide` : `${event.sourceLabel}: +${event.hpDelta} HP`}
                         </span>
                       </div>
                     ))}
 
                     {recentEvents.length === 0 ? (
-                      <p className="px-4 py-4 text-slate-500">Sin eventos todavia.</p>
+                      <p className="px-4 py-4 text-slate-400">Sin eventos todavia.</p>
                     ) : null}
                   </div>
                 </section>
