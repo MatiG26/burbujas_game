@@ -330,7 +330,10 @@ function App() {
     [enabledGiftConfigs],
   )
 
-  const topDonors = useMemo(() => leaderboard.slice(0, 3), [leaderboard])
+  const topDonors = useMemo(
+    () => leaderboard.filter((entry) => entry.isActive && entry.currentHp > 0).slice(0, 3),
+    [leaderboard],
+  )
 
   const syncGiftImageFromEvent = useCallback((giftId: string, eventImageUrl: string) => {
     const normalizedEventImage = eventImageUrl.trim()

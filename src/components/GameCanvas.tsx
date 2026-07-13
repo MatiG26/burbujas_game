@@ -81,7 +81,7 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
           <div className="grid gap-3">
             <div className="relative rounded-3xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-md">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center text-[10px] uppercase tracking-[0.28em] text-sky-100/75">
+                <div className="flex items-center text-[10px] uppercase tracking-[0.24em] text-sky-100/75 sm:tracking-[0.28em]">
                   <span>Top</span>
                   {onTopDonorsSecretTap ? (
                     <button
@@ -95,7 +95,7 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                   ) : (
                     <span className="mx-1">3</span>
                   )}
-                  <span>donadores</span>
+                  <span>Burbujas</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase tracking-[0.24em] text-slate-400">En vivo</span>
@@ -119,19 +119,19 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="mt-3 grid grid-cols-3 gap-1.5 sm:gap-2">
                 {topDonors.map((entry, index) => {
                   const styles = getTopDonorCardStyles(index)
 
                   return (
                     <article
                       key={entry.id}
-                      className={`min-w-0 rounded-2xl border px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${styles.card}`}
+                      className={`min-w-0 rounded-[18px] border px-2 py-2 sm:rounded-2xl sm:px-3 shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${styles.card}`}
                     >
                       <div className="flex min-w-0 items-start gap-2">
-                        <div className="relative shrink-0">
+                        <div className="relative shrink-0 pt-0.5">
                           {styles.crown ? (
-                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-base leading-none">
+                            <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-sm leading-none sm:-top-3 sm:text-base">
                               👑
                             </span>
                           ) : null}
@@ -140,29 +140,26 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                         <img
                           src={entry.avatarUrl}
                           alt={entry.username}
-                          className="h-10 w-10 shrink-0 rounded-xl object-cover"
+                          className="h-8 w-8 shrink-0 rounded-lg object-cover sm:h-10 sm:w-10 sm:rounded-xl"
                         />
                       ) : (
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-700 text-sm font-black text-white">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-700 text-xs font-black text-white sm:h-10 sm:w-10 sm:rounded-xl sm:text-sm">
                           {entry.username.slice(0, 1).toUpperCase()}
                         </div>
                       )}
                         </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.24em] ${styles.badge}`}>
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] sm:px-2 sm:py-1 sm:text-[10px] sm:tracking-[0.24em] ${styles.badge}`}>
                             #{index + 1}
                           </span>
-                          <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${styles.value} bg-black/10`}>
-                            {formatCompactHp(entry.totalDonated)} HP
-                          </span>
                         </div>
-                        <strong className={`mt-2 block truncate text-sm font-black sm:text-[15px] ${styles.name}`}>
+                        <strong className={`mt-1 block truncate text-[11px] font-black leading-tight sm:mt-2 sm:text-[15px] ${styles.name}`}>
                           {entry.username}
                         </strong>
-                        <span className={`mt-1 block truncate text-[11px] font-semibold ${styles.value}`}>
-                          {formatValue(entry.currentHp)} HP actual
+                        <span className={`mt-1 block truncate text-[10px] font-black uppercase tracking-[0.08em] sm:text-[11px] ${styles.value}`}>
+                          HP {formatCompactHp(entry.currentHp)}
                         </span>
                       </div>
                     </div>

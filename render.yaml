@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: circular-saw-tiktok-bridge
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm run dev:bridge
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_CHANNEL_ID
+        value: default-room
+      - key: TIKTOK_BRIDGE_PORT
+        value: 3189
