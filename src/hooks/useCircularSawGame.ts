@@ -66,7 +66,6 @@ const boxingGloveSprite = new Image()
 boxingGloveSprite.src = boxingGloveSpriteUrl
 const confettiShowcaseDuration = 2000
 const confettiCycles = 2
-const confettiNeedleBurstDuration = 460
 const boxingEntryDuration = 950
 const boxingStrikeDamage = 200
 
@@ -722,7 +721,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     entity.vy = 0
   }
 
-  function finishConfettiMode(entity: SawEntity, now: number) {
+  function finishConfettiMode(entity: SawEntity) {
     entity.x = canvasSizeRef.current.width * 0.5
     entity.y = canvasSizeRef.current.height * 0.46
     finishSpecialMode(entity)
@@ -984,7 +983,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
         const expiredOtherSpecial = entity.specialMode === 'boxing' && !isSpecialActive(entity, time)
 
         if (expiredConfetti) {
-          finishConfettiMode(entity, time)
+          finishConfettiMode(entity)
         } else if (expiredOtherSpecial) {
           finishSpecialMode(entity)
         }
