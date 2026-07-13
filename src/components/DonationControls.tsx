@@ -409,8 +409,8 @@ export function DonationControls({
           ) : null}
 
           {activeSection === 'monitor' ? (
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-              <div className="grid gap-4">
+            <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+              <div className="grid min-w-0 gap-4">
                 <section className="rounded-[24px] border border-white/8 bg-[#1d2126] p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -453,9 +453,9 @@ export function DonationControls({
                         key={saw.id}
                         className="border-b border-white/8 p-3.5 last:border-b-0"
                       >
-                        <div className="flex items-center justify-between gap-3 text-sm text-slate-50">
+                        <div className="flex min-w-0 items-center justify-between gap-3 text-sm text-slate-50">
                           <strong className="truncate">{saw.username}</strong>
-                          <span>{formatCompact(saw.hp)} HP</span>
+                          <span className="shrink-0">{formatCompact(saw.hp)} HP</span>
                         </div>
                         <div className="mt-3 h-2 rounded-full bg-[#111315]">
                           <div
@@ -486,10 +486,10 @@ export function DonationControls({
                     {recentEvents.map((event) => (
                       <div
                         key={`${event.username}-${event.timestamp}`}
-                        className="flex items-center justify-between gap-3 border-b border-white/8 px-3 py-3 last:border-b-0"
+                        className="flex min-w-0 flex-col gap-1.5 border-b border-white/8 px-3 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                       >
-                        <span className="truncate">{event.username}</span>
-                        <span className="whitespace-nowrap text-slate-100">
+                        <span className="min-w-0 truncate">{event.username}</span>
+                        <span className="min-w-0 break-words text-slate-100 sm:max-w-[58%] sm:text-right">
                           {event.action === 'split' ? `${event.sourceLabel}: divide` : `${event.sourceLabel}: +${event.hpDelta} HP`}
                         </span>
                       </div>
@@ -502,7 +502,7 @@ export function DonationControls({
                 </section>
               </div>
 
-              <div className="min-h-0">{leaderboardPanel}</div>
+              <div className="min-h-0 min-w-0">{leaderboardPanel}</div>
             </div>
           ) : null}
         </div>
