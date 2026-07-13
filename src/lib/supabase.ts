@@ -16,6 +16,10 @@ export const bridgeTransportLabel = supabaseRealtimeEnabled
 
 let supabaseClient: SupabaseClient | null = null
 
+function shouldUseSameOriginBridgeProxy() {
+  return import.meta.env.DEV && !configuredBridgeHost
+}
+
 export function getSupabaseClient() {
   if (!supabaseRealtimeEnabled) {
     return null
@@ -34,12 +38,21 @@ export function getSupabaseClient() {
 }
 
 export function getLocalBridgeWebSocketUrl() {
+  if (shouldUseSameOriginBridgeProxy()) {
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    return `${protocol}://${window.location.host}/bridge-ws`
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const host = configuredBridgeHost || window.location.hostname || '127.0.0.1'
   return `${protocol}://${host}:${configuredBridgePort}`
 }
 
 export function getLocalBridgeHttpUrl() {
+  if (shouldUseSameOriginBridgeProxy()) {
+    return `${window.location.origin}/bridge-http`
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'https' : 'http'
   const host = configuredBridgeHost || window.location.hostname || '127.0.0.1'
   return `${protocol}://${host}:${configuredBridgePort}`
