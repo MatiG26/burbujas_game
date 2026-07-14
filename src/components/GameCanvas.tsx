@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CanvasSize, DonationEvent, GiftConfig, LeaderboardEntry } from '../types/game'
+import type { CanvasSize, DonationEvent, GiftConfig, LeaderboardEntry, RoundStatus } from '../types/game'
 
 const extraDonationEntries = [
   {
@@ -24,6 +24,7 @@ interface GameCanvasProps {
   topDonors?: LeaderboardEntry[]
   gifts?: GiftConfig[]
   recentEvents?: DonationEvent[]
+  roundStatus?: RoundStatus
   audioEnabled?: boolean
   onToggleAudio?: () => void
   onTopDonorsSecretTap?: () => void
@@ -47,6 +48,13 @@ function formatCompactHp(value: number) {
     notation: 'compact',
     maximumFractionDigits: value > 0 && value < 1 ? 2 : 1,
   }).format(value)
+}
+
+function formatRoundTime(value: number) {
+  const totalSeconds = Math.max(0, Math.ceil(value / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
 function getTopDonorCardStyles(index: number) {
@@ -79,13 +87,21 @@ function getTopDonorCardStyles(index: number) {
   }
 }
 
-export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = false, topDonors = [], gifts = [], recentEvents = [], audioEnabled = false, onToggleAudio, onTopDonorsSecretTap }: GameCanvasProps) {
+export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = false, topDonors = [], gifts = [], recentEvents = [], roundStatus, audioEnabled = false, onToggleAudio, onTopDonorsSecretTap }: GameCanvasProps) {
   const [specialDonorOverlay, setSpecialDonorOverlay] = useState<SpecialDonorOverlay | null>(null)
   const lastSpecialOverlayKeyRef = useRef<string | null>(null)
   const latestSpecialEvent = useMemo(
     () => recentEvents.find((event) => event.action === 'confetti' || event.action === 'boxing') ?? null,
     [recentEvents],
   )
+  const isLandscapeBattle = fullscreen && canvasSize.width > canvasSize.height
+  const visibleGifts = isLandscapeBattle ? gifts.slice(0, 6) : gifts.slice(0, 8)
+  const winnerShowcase = roundStatus?.showcaseWinner ?? null
+  const lastWinner = roundStatus?.lastWinner ?? null
+  const topCardPaddingClass = isLandscapeBattle ? 'px-1 py-1 sm:px-1.5' : 'px-2 py-2 sm:px-3'
+  const topAvatarClass = isLandscapeBattle ? 'h-6 w-6 rounded-md sm:h-7 sm:w-7' : 'h-8 w-8 rounded-lg sm:h-10 sm:w-10 sm:rounded-xl'
+  const topNameClass = isLandscapeBattle ? 'text-[9px] sm:text-[11px]' : 'text-[11px] sm:text-[15px]'
+  const topValueClass = isLandscapeBattle ? 'text-[8px] sm:text-[9px]' : 'text-[10px] sm:text-[11px]'
 
   useEffect(() => {
     if (!fullscreen || !latestSpecialEvent) {
@@ -127,7 +143,7 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
       <section className="relative flex h-screen flex-col overflow-hidden bg-[linear-gradient(180deg,#0d6d82_0%,#09536d_45%,#083a57_100%)] px-3 py-3 sm:px-4">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(190,242,255,0.22),transparent_42%),radial-gradient(circle_at_bottom,rgba(12,74,110,0.32),transparent_45%)]" />
 
-        {specialDonorOverlay ? (
+        {specialDonorOverlay && !winnerShowcase ? (
           <div className="pointer-events-none absolute inset-x-0 top-[22%] z-30 flex justify-center px-16 sm:top-[18%] sm:px-24">
             <div className="max-w-full rounded-full border border-white/18 bg-[rgba(7,17,29,0.82)] px-5 py-3 text-center shadow-[0_16px_42px_rgba(0,0,0,0.34)]">
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-100/78">
@@ -140,9 +156,23 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
           </div>
         ) : null}
 
+        {winnerShowcase ? (
+          <div className="pointer-events-none absolute inset-x-0 top-[22%] z-30 flex justify-center px-8 sm:top-[18%] sm:px-16">
+            <div className="max-w-full rounded-[30px] border border-yellow-200/30 bg-[linear-gradient(180deg,rgba(68,40,6,0.9),rgba(27,18,7,0.85))] px-6 py-4 text-center shadow-[0_18px_46px_rgba(0,0,0,0.38)]">
+              <p className="text-[10px] font-black uppercase tracking-[0.34em] text-yellow-200/78">Ganador</p>
+              <strong className="mt-2 block truncate text-2xl font-black text-yellow-300 sm:text-3xl">
+                {winnerShowcase.username}
+              </strong>
+              <span className="mt-2 block text-sm font-black uppercase tracking-[0.16em] text-yellow-100/85 sm:text-base">
+                HP {formatCompactHp(winnerShowcase.hp)}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         <div className="relative z-10 shrink-0">
           <div className="grid gap-3">
-            <div className="relative rounded-3xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-md">
+            <div className={`relative rounded-3xl border border-white/10 bg-slate-950/60 backdrop-blur-md ${isLandscapeBattle ? 'p-2' : 'p-3'}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center text-[10px] uppercase tracking-[0.24em] text-sky-100/75 sm:tracking-[0.28em]">
                   <span>Top</span>
@@ -161,6 +191,14 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                   <span>Burbujas</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <div className={`rounded-full border px-3 py-1.5 text-right ${roundStatus?.isActive ? 'border-amber-300/30 bg-amber-400/12 text-amber-100' : 'border-white/10 bg-white/8 text-slate-200'}`}>
+                    <span className="block text-[9px] font-black uppercase tracking-[0.22em] text-slate-300/80">
+                      {roundStatus?.isActive ? 'Ronda' : 'Timer'}
+                    </span>
+                    <strong className="block text-sm font-black sm:text-base">
+                      {formatRoundTime(roundStatus?.remainingMs ?? 180000)}
+                    </strong>
+                  </div>
                   <span className="text-[10px] uppercase tracking-[0.24em] text-slate-400">En vivo</span>
                   <button
                     type="button"
@@ -182,7 +220,7 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-1.5 sm:gap-2">
+              <div className={`mt-2 grid grid-cols-3 ${isLandscapeBattle ? 'gap-0.5' : 'gap-1.5 sm:gap-2'}`}>
                 {[0, 1, 2].map((index) => {
                   const entry = topDonors[index]
                   const styles = getTopDonorCardStyles(index)
@@ -191,17 +229,17 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                     return (
                       <article
                         key={`placeholder-${index}`}
-                        className="min-w-0 rounded-[18px] border border-dashed border-white/10 bg-white/5 px-2 py-2 sm:rounded-2xl sm:px-3"
+                        className={`min-w-0 rounded-[18px] border border-dashed border-white/10 bg-white/5 sm:rounded-2xl ${topCardPaddingClass}`}
                       >
                         <div className="flex min-w-0 items-start gap-2 opacity-55">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-800/90 text-xs font-black text-slate-400 sm:h-10 sm:w-10 sm:rounded-xl sm:text-sm">
+                          <div className={`flex shrink-0 items-center justify-center bg-slate-800/90 text-xs font-black text-slate-400 sm:text-sm ${isLandscapeBattle ? 'h-7 w-7 rounded-md sm:h-8 sm:w-8' : 'h-8 w-8 rounded-lg sm:h-10 sm:w-10 sm:rounded-xl'}`}>
                             #{index + 1}
                           </div>
                           <div className="min-w-0 flex-1 pt-0.5">
-                            <span className="block truncate text-[11px] font-black leading-tight text-slate-500 sm:text-[15px]">
+                            <span className={`block truncate font-black leading-tight text-slate-500 ${topNameClass}`}>
                               Esperando
                             </span>
-                            <span className="mt-1 block truncate text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 sm:text-[11px]">
+                            <span className={`mt-1 block truncate font-black uppercase tracking-[0.08em] text-slate-500 ${topValueClass}`}>
                               HP 0
                             </span>
                           </div>
@@ -213,7 +251,7 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                   return (
                     <article
                       key={entry.id}
-                      className={`min-w-0 rounded-[18px] border px-2 py-2 sm:rounded-2xl sm:px-3 shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${styles.card}`}
+                      className={`min-w-0 rounded-[18px] border sm:rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.18)] ${topCardPaddingClass} ${styles.card}`}
                     >
                       <div className="flex min-w-0 items-start gap-2">
                         <div className="relative shrink-0 pt-0.5">
@@ -227,10 +265,10 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                         <img
                           src={entry.avatarUrl}
                           alt={entry.username}
-                          className="h-8 w-8 shrink-0 rounded-lg object-cover sm:h-10 sm:w-10 sm:rounded-xl"
+                          className={`${topAvatarClass} shrink-0 object-cover`}
                         />
                       ) : (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-700 text-xs font-black text-white sm:h-10 sm:w-10 sm:rounded-xl sm:text-sm">
+                        <div className={`flex shrink-0 items-center justify-center bg-slate-700 text-xs font-black text-white sm:text-sm ${topAvatarClass}`}>
                           {entry.username.slice(0, 1).toUpperCase()}
                         </div>
                       )}
@@ -242,10 +280,10 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                             #{index + 1}
                           </span>
                         </div>
-                        <strong className={`mt-1 block truncate text-[11px] font-black leading-tight sm:mt-2 sm:text-[15px] ${styles.name}`}>
+                        <strong className={`mt-1 block truncate font-black leading-tight sm:mt-2 ${topNameClass} ${styles.name}`}>
                           {entry.username}
                         </strong>
-                        <span className={`mt-1 block truncate text-[10px] font-black uppercase tracking-[0.08em] sm:text-[11px] ${styles.value}`}>
+                        <span className={`mt-1 block truncate font-black uppercase tracking-[0.08em] ${topValueClass} ${styles.value}`}>
                           HP {formatCompactHp(entry.currentHp)}
                         </span>
                       </div>
@@ -266,20 +304,43 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
           />
         </div>
 
-        <div className="pointer-events-none absolute left-3 top-1/2 z-20 -translate-y-1/2 sm:left-4">
-          <div className="flex flex-col items-start gap-2 rounded-3xl border border-white/8 bg-slate-900/8 px-3 py-3 text-white">
+        {lastWinner ? (
+          <div className={`pointer-events-none absolute z-30 top-39 ${isLandscapeBattle ? 'left-3 max-w-[220px] sm:left-4' : 'left-3 max-w-[188px] sm:left-4'}`}>
+            <div className="rounded-[16px] border border-yellow-200/20 bg-[linear-gradient(135deg,rgba(250,204,21,0.08),rgba(161,98,7,0.08))] px-2 py-2 text-white shadow-[0_12px_34px_rgba(0,0,0,0.18)]">
+              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-yellow-200/74">Ultimo ganador</p>
+              <div className="mt-1 flex items-center gap-1.5 text-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">
+                {lastWinner.avatarUrl ? (
+                  <img src={lastWinner.avatarUrl} alt={lastWinner.username} className="h-7 w-7 rounded-md object-cover" />
+                ) : (
+                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-yellow-300/18 text-[11px] font-black text-yellow-200">
+                    {lastWinner.username.slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <strong className="block truncate text-[11px] font-black text-yellow-200">{lastWinner.username}</strong>
+                  <span className="block text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-200/88">HP {formatCompactHp(lastWinner.hp)}</span>
+                  <span className="block text-[9px] text-slate-100/72">Aguanto {formatRoundTime(lastWinner.survivedMs)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div className={`pointer-events-none absolute z-20 ${isLandscapeBattle ? 'bottom-3 left-3 sm:left-4' : 'left-3 top-1/2 -translate-y-1/2 sm:left-4'}`}>
+          <div className={`rounded-3xl border border-white/8 bg-slate-900/8 px-3 py-3 text-white ${isLandscapeBattle ? 'max-w-[330px]' : ''}`}>
+            <div className={`gap-2 ${isLandscapeBattle ? 'grid grid-cols-2 items-start' : 'flex flex-col items-start'}`}>
             {extraDonationEntries.map((entry) => (
               <article
                 key={entry.id}
-                className="flex w-full items-center justify-start gap-2 text-left text-shadow-[0_2px_10px_rgba(0,0,0,0.45)]"
+                className={`flex w-full items-center justify-start gap-2 text-left text-shadow-[0_2px_10px_rgba(0,0,0,0.45)] ${isLandscapeBattle ? 'min-w-0' : ''}`}
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/6 text-[9px] font-black uppercase tracking-[0.16em] text-sky-100">
+                <div className={`flex shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/6 text-[9px] font-black uppercase tracking-[0.16em] text-sky-100 ${isLandscapeBattle ? 'h-8 w-8' : 'h-10 w-10'}`}>
                   {entry.icon === 'heart' ? (
-                    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-rose-300" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" className={`${isLandscapeBattle ? 'h-4 w-4' : 'h-5 w-5'} fill-rose-300`} aria-hidden="true">
                       <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35Z" />
                     </svg>
                   ) : entry.icon === 'chat' ? (
-                    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-sky-200" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" className={`${isLandscapeBattle ? 'h-4 w-4' : 'h-5 w-5'} fill-sky-200`} aria-hidden="true">
                       <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v7A2.5 2.5 0 0 1 17.5 15H10l-4.7 4.03A.75.75 0 0 1 4 18.46V15.5a2.5 2.5 0 0 1-2-2.45v-7Z" />
                     </svg>
                   ) : (
@@ -287,29 +348,30 @@ export function GameCanvas({ canvasRef, activeCount, canvasSize, fullscreen = fa
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100/72">{entry.title}</p>
-                  <span className="text-sm font-black text-orange-200">{entry.value}</span>
+                  <p className={`${isLandscapeBattle ? 'text-[10px]' : 'text-[11px]'} font-semibold uppercase tracking-[0.18em] text-slate-100/72`}>{entry.title}</p>
+                  <span className={`${isLandscapeBattle ? 'text-[13px]' : 'text-sm'} font-black text-orange-200`}>{entry.value}</span>
                 </div>
               </article>
             ))}
 
-            {gifts.slice(0, 8).map((gift) => (
+            {visibleGifts.map((gift) => (
               <article
                 key={gift.id}
-                className="flex w-full items-center justify-start gap-2 text-left text-shadow-[0_2px_10px_rgba(0,0,0,0.45)]"
+                className={`flex w-full items-center justify-start gap-2 text-left text-shadow-[0_2px_10px_rgba(0,0,0,0.45)] ${isLandscapeBattle ? 'min-w-0' : ''}`}
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center p-1">
+                <div className={`flex shrink-0 items-center justify-center p-1 ${isLandscapeBattle ? 'h-8 w-8' : 'h-10 w-10'}`}>
                   {gift.imageUrl ? (
                     <img src={gift.imageUrl} alt={gift.giftName} className="h-full w-full object-contain" />
                   ) : (
                     <span className="text-[9px] font-bold uppercase text-slate-300">Gift</span>
                   )}
                 </div>
-                <span className="text-sm font-black text-orange-200">
+                <span className={`${isLandscapeBattle ? 'text-[13px]' : 'text-sm'} font-black text-orange-200`}>
                   {gift.action === 'split' ? 'DIVIDE' : `+${formatValue(gift.hpReward)} HP`}
                 </span>
               </article>
             ))}
+            </div>
           </div>
         </div>
       </section>

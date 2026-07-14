@@ -119,7 +119,7 @@ export function resolveCollision(a: SawEntity, b: SawEntity) {
   const massB = Math.max(1, b.radius * b.radius)
 
   // Impulso clasico sobre la normal para separarlas y conservar un rebote creible.
-  const impulse = (-(1 + restitution) * separatingSpeed) / (1 / massA + 1 / massB)
+  const impulse = ((-(1 + restitution) * separatingSpeed) / (1 / massA + 1 / massB)) * 1.18
   const impulseX = impulse * nx
   const impulseY = impulse * ny
 

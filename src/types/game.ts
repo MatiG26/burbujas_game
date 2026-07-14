@@ -4,7 +4,7 @@ export interface SawEntity {
   username: string
   avatarUrl: string
   entityType: 'standard' | 'comment'
-  specialMode?: 'confetti' | 'boxing'
+  specialMode?: 'confetti' | 'boxing' | 'lion'
   specialPhase?: 'showcase' | 'plunge'
   specialPhaseStartedAt?: number
   specialModeUntil?: number
@@ -25,7 +25,7 @@ export interface SawEntity {
   isTouching?: boolean
 }
 
-export type GiftAction = 'boost' | 'split' | 'comment' | 'confetti' | 'boxing'
+export type GiftAction = 'boost' | 'split' | 'comment' | 'confetti' | 'boxing' | 'lion'
 
 export interface DonationEvent {
   username: string
@@ -61,6 +61,33 @@ export interface LeaderboardEntry {
   currentHp: number
   sawCount: number
   isActive: boolean
+}
+
+export interface RoundWinnerSummary {
+  playerId: string
+  username: string
+  avatarUrl: string
+  hp: number
+  survivedMs: number
+  wonAt: number
+}
+
+export interface RoundStatus {
+  isActive: boolean
+  participantCount: number
+  remainingMs: number
+  startedAt: number | null
+  lastWinner: RoundWinnerSummary | null
+  showcaseWinner: RoundWinnerSummary | null
+}
+
+export interface SharedRoundState {
+  startedAt: number | null
+  endsAt: number | null
+  winnerShowcaseUntil: number | null
+  winnerEntityId: string | null
+  lastWinner: RoundWinnerSummary | null
+  showcaseWinner: RoundWinnerSummary | null
 }
 
 export interface ActiveSawSummary {
@@ -137,6 +164,7 @@ export interface SharedGameState {
   leaderboard: LeaderboardEntry[]
   recentEvents: DonationEvent[]
   donationHistory: DonationEvent[]
+  roundState?: SharedRoundState
 }
 
 export type SharedAppMessage =

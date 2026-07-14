@@ -389,6 +389,7 @@ export function DonationControls({
                             <option value="split">Dividir sierra</option>
                             <option value="confetti">Confeti especial</option>
                             <option value="boxing">Golpe de boxeo</option>
+                            <option value="lion">Leon jefe</option>
                           </select>
                         </label>
                         <label className="flex items-center gap-3 rounded-2xl border border-white/8 bg-[#111315] px-3 py-3 text-xs font-medium uppercase tracking-[0.2em] text-slate-300 sm:col-span-2 xl:col-span-1 xl:self-end">

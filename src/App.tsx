@@ -21,6 +21,8 @@ const secondRoseImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast
 const perfumeImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/20b8f61246c7b6032777bb81bf4ee055~tplv-obj.webp'
 const confettiImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/cb4e11b3834e149f08e1cdcc93870b26~tplv-obj.webp'
 const boxingGloveImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/9f8bd92363c400c284179f6719b6ba9c~tplv-obj.webp'
+const lionImageUrl = 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/4fb89af2082a290b37d704e20f4fe729~tplv-obj.webp'
+const tapTapThreshold = 3
 
 const migratedDefaultGiftConfigMap = new Map([
   ['rose', { giftName: 'Rosa 2', imageUrl: currentRoseImageUrl, hpReward: 10, action: 'boost' as const }],
@@ -31,8 +33,14 @@ const migratedDefaultGiftConfigMap = new Map([
   ['perfume', { giftName: 'Perfume', imageUrl: perfumeImageUrl, hpReward: 220, action: 'boost' as const }],
   ['treasure-box', { giftName: 'Confeti', imageUrl: confettiImageUrl, hpReward: 1000, action: 'confetti' as const }],
   ['confetti', { giftName: 'Confeti', imageUrl: confettiImageUrl, hpReward: 1000, action: 'confetti' as const }],
-  ['lion', { giftName: 'Guante de boxeo', imageUrl: boxingGloveImageUrl, hpReward: 3000, action: 'boxing' as const }],
+  ['lion', { giftName: 'Leon', imageUrl: lionImageUrl, hpReward: 10000, action: 'lion' as const }],
   ['boxing-glove', { giftName: 'Guante de boxeo', imageUrl: boxingGloveImageUrl, hpReward: 3000, action: 'boxing' as const }],
+])
+
+const canonicalGiftIdMap = new Map([
+  ['tiktok', 'korean-heart'],
+  ['split-saw', 'second-rose'],
+  ['treasure-box', 'confetti'],
 ])
 
 function sortGiftConfigs(gifts: GiftConfig[]) {
@@ -50,6 +58,27 @@ function sortGiftConfigs(gifts: GiftConfig[]) {
     }
 
     return left.id.localeCompare(right.id)
+  })
+}
+
+function normalizeGiftId(giftId: string) {
+  return canonicalGiftIdMap.get(giftId) ?? giftId
+}
+
+function areGiftConfigsEqual(left: GiftConfig[], right: GiftConfig[]) {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  return left.every((gift, index) => {
+    const comparison = right[index]
+    return comparison
+      && gift.id === comparison.id
+      && gift.giftName === comparison.giftName
+      && gift.imageUrl === comparison.imageUrl
+      && gift.hpReward === comparison.hpReward
+      && gift.action === comparison.action
+      && gift.enabled === comparison.enabled
   })
 }
 
@@ -87,35 +116,66 @@ function getCurrentRoute(): AppRoute {
 }
 
 function normalizeGiftConfig(gift: GiftConfig): GiftConfig {
-  const migratedDefault = migratedDefaultGiftConfigMap.get(gift.id)
+  const normalizedId = normalizeGiftId(gift.id)
+  const migratedDefault = migratedDefaultGiftConfigMap.get(gift.id) ?? migratedDefaultGiftConfigMap.get(normalizedId)
 
   return {
     ...gift,
+    id: normalizedId,
     ...(migratedDefault ?? {}),
     enabled: gift.enabled ?? true,
     imageUrl:
-      gift.id === 'rose' && (gift.imageUrl === legacyRoseImageUrl || gift.imageUrl.trim().length === 0)
+      normalizedId === 'rose' && (gift.imageUrl === legacyRoseImageUrl || gift.imageUrl.trim().length === 0)
         ? currentRoseImageUrl
         : (migratedDefault?.imageUrl || gift.imageUrl),
   }
+}
+
+function mergeGiftConfigs(gifts: GiftConfig[]) {
+  const mergedGiftMap = new Map<string, GiftConfig>()
+
+  for (const gift of gifts) {
+    const normalizedGift = normalizeGiftConfig(gift)
+    if (!mergedGiftMap.has(normalizedGift.id)) {
+      mergedGiftMap.set(normalizedGift.id, normalizedGift)
+    }
+  }
+
+  for (const defaultGift of defaultGiftConfigs) {
+    if (!mergedGiftMap.has(defaultGift.id)) {
+      mergedGiftMap.set(defaultGift.id, defaultGift)
+    }
+  }
+
+  return [...mergedGiftMap.values()]
 }
 
 function buildManualDonationEvent(
   username: string,
   avatarUrl: string,
   preset: GiftConfig,
+  quantity = 1,
 ): DonationEvent {
+  const normalizedQuantity = Math.max(1, quantity)
+
   return {
     username,
     avatarUrl,
-    hpDelta: preset.action === 'split' ? 0 : preset.hpReward,
+    hpDelta: preset.action === 'split' ? 0 : preset.hpReward * normalizedQuantity,
     sourceLabel: preset.giftName,
     sourceImageUrl: preset.imageUrl,
     action: preset.action,
-    quantity: 1,
+    quantity: normalizedQuantity,
     timestamp: Date.now(),
   }
 }
+
+function buildSimulationUsername(baseUsername: string, index: number) {
+  const trimmedUsername = baseUsername.trim()
+  return index === 0 ? trimmedUsername : `${trimmedUsername}${index}`
+}
+
+type SimulationQuantityMode = 'multiple' | 'single'
 
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => getCurrentRoute())
@@ -123,6 +183,7 @@ function App() {
   const [pullDistance, setPullDistance] = useState(0)
   const [isPullRefreshing, setIsPullRefreshing] = useState(false)
   const [homeSyncCodeInput, setHomeSyncCodeInput] = useState('')
+  const [simulationQuantityMode, setSimulationQuantityMode] = useState<SimulationQuantityMode>('multiple')
   const [username, setUsername] = useState('StreamerPro')
   const [avatarUrl, setAvatarUrl] = useState(
     'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80',
@@ -139,13 +200,14 @@ function App() {
   const syncSocketRef = useRef<WebSocket | null>(null)
   const syncReadyRef = useRef(false)
   const pendingSharedMessagesRef = useRef<SharedAppMessage[]>([])
+  const pendingTapTapCountsRef = useRef(new Map<string, number>())
   const reconnectTimeoutRef = useRef<number | null>(null)
   const sharedStateRef = useRef<SharedAppState | null>(null)
   const skippedSharedStateRef = useRef<string | null>(null)
   const pullDistanceRef = useRef(0)
   const isPullRefreshingRef = useRef(false)
   const syncSocketUrlIndexRef = useRef(0)
-  const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, donationHistory, audioEnabled, toggleAudio, resetGame, donate, getSharedGameState, applySharedGameState } =
+  const { canvasRef, canvasSize, leaderboard, activeSaws, recentEvents, donationHistory, roundStatus, audioEnabled, toggleAudio, resetGame, donate, getSharedGameState, applySharedGameState } =
     useCircularSawGame()
   const donateRef = useRef(donate)
   const resetGameRef = useRef(resetGame)
@@ -170,8 +232,10 @@ function App() {
       return
     }
 
-    if (giftConfigs.some((gift) => gift.enabled === undefined)) {
-      setGiftConfigs((current) => current.map(normalizeGiftConfig))
+    const mergedGiftConfigs = mergeGiftConfigs(giftConfigs)
+
+    if (!areGiftConfigsEqual(giftConfigs, mergedGiftConfigs)) {
+      setGiftConfigs(mergedGiftConfigs)
     }
   }, [giftConfigs, setGiftConfigs])
 
@@ -295,7 +359,7 @@ function App() {
   )
 
   const normalizedGiftConfigs = useMemo(
-    () => sortGiftConfigs(giftConfigs.map(normalizeGiftConfig)),
+    () => sortGiftConfigs(mergeGiftConfigs(giftConfigs)),
     [giftConfigs],
   )
 
@@ -377,14 +441,30 @@ function App() {
       }
 
       if (event.giftId === 'like' || normalizeGiftName(event.giftName) === 'like') {
+        const normalizedLikeUser = event.username.trim().toLowerCase() || event.username.trim()
+        const previousTapCount = pendingTapTapCountsRef.current.get(normalizedLikeUser) ?? 0
+        const totalTapCount = previousTapCount + Math.max(1, event.repeatCount)
+        const readyTapBundles = Math.floor(totalTapCount / tapTapThreshold)
+        const remainingTapCount = totalTapCount % tapTapThreshold
+
+        if (remainingTapCount > 0) {
+          pendingTapTapCountsRef.current.set(normalizedLikeUser, remainingTapCount)
+        } else {
+          pendingTapTapCountsRef.current.delete(normalizedLikeUser)
+        }
+
+        if (readyTapBundles === 0) {
+          return
+        }
+
         donate({
           username: event.username,
           avatarUrl: event.avatarUrl,
-          hpDelta: 0.25 * Math.max(1, event.repeatCount),
+          hpDelta: 0.25 * readyTapBundles,
           sourceLabel: 'Like',
           sourceImageUrl: event.giftImageUrl,
           action: 'boost',
-          quantity: Math.max(1, event.repeatCount),
+          quantity: readyTapBundles * tapTapThreshold,
           timestamp: event.timestamp,
         })
         return
@@ -416,7 +496,7 @@ function App() {
         return
       }
 
-      if (mappedGift.action === 'confetti' || mappedGift.action === 'boxing') {
+      if (mappedGift.action === 'confetti' || mappedGift.action === 'boxing' || mappedGift.action === 'lion') {
         donate({
           username: event.username,
           avatarUrl: event.avatarUrl,
@@ -770,23 +850,110 @@ function App() {
 
   const canTriggerManualGift = username.trim().length > 0
 
-  const triggerManualDonation = useCallback((preset: GiftConfig) => {
+  const triggerManualDonation = useCallback((preset: GiftConfig, quantity = 1) => {
     if (!preset.enabled || !username.trim()) {
       return
     }
 
-    const event = buildManualDonationEvent(username, avatarUrl, preset)
+    const normalizedQuantity = Math.max(1, quantity)
 
-    donate(event)
+    if (simulationQuantityMode === 'single') {
+      const event = buildManualDonationEvent(username, avatarUrl, preset, normalizedQuantity)
+      donate(event)
+      broadcastSharedMessage({
+        kind: 'manual-donation',
+        sourceId: instanceId,
+        event,
+      })
+      return
+    }
 
-    broadcastSharedMessage({
-      kind: 'manual-donation',
-      sourceId: instanceId,
-      event,
-    })
-  }, [avatarUrl, broadcastSharedMessage, donate, instanceId, username])
+    for (let index = 0; index < normalizedQuantity; index += 1) {
+      const simulatedUsername = buildSimulationUsername(username, index)
+      const event = buildManualDonationEvent(simulatedUsername, avatarUrl, preset, 1)
+      event.timestamp += index
+
+      donate(event)
+
+      broadcastSharedMessage({
+        kind: 'manual-donation',
+        sourceId: instanceId,
+        event,
+      })
+    }
+  }, [avatarUrl, broadcastSharedMessage, donate, instanceId, simulationQuantityMode, username])
+
+  const triggerManualExtraInteraction = useCallback((interactionId: 'comment-bubble' | 'tap-tap-like', quantity = 1) => {
+    if (!username.trim()) {
+      return
+    }
+
+    const normalizedQuantity = Math.max(1, quantity)
+
+    if (interactionId === 'tap-tap-like') {
+      const event: DonationEvent = {
+        username,
+        avatarUrl,
+        hpDelta: 0.25 * normalizedQuantity,
+        sourceLabel: 'Tap Tap',
+        action: 'boost',
+        quantity: normalizedQuantity,
+        timestamp: Date.now(),
+      }
+
+      donate(event)
+      broadcastSharedMessage({
+        kind: 'manual-donation',
+        sourceId: instanceId,
+        event,
+      })
+      return
+    }
+
+    if (simulationQuantityMode === 'single') {
+      const event: DonationEvent = {
+        username,
+        avatarUrl,
+        hpDelta: 0.25 * normalizedQuantity,
+        sourceLabel: 'Chat',
+        action: 'comment',
+        commentText: username,
+        quantity: normalizedQuantity,
+        timestamp: Date.now(),
+      }
+
+      donate(event)
+      broadcastSharedMessage({
+        kind: 'manual-donation',
+        sourceId: instanceId,
+        event,
+      })
+      return
+    }
+
+    for (let index = 0; index < normalizedQuantity; index += 1) {
+      const event: DonationEvent = {
+        username: buildSimulationUsername(username, index),
+        avatarUrl,
+        hpDelta: 0.25,
+        sourceLabel: 'Chat',
+        action: 'comment',
+        commentText: buildSimulationUsername(username, index),
+        quantity: 1,
+        timestamp: Date.now() + index,
+      }
+
+      donate(event)
+      broadcastSharedMessage({
+        kind: 'manual-donation',
+        sourceId: instanceId,
+        event,
+      })
+    }
+  }, [avatarUrl, broadcastSharedMessage, donate, instanceId, simulationQuantityMode, username])
 
   const resetMonitorState = useCallback(() => {
+    pendingTapTapCountsRef.current.clear()
     resetGame()
     broadcastSharedMessage({
       kind: 'reset-game',
@@ -849,6 +1016,7 @@ function App() {
   }, [homeSyncCodeInput, navigateTo, setSyncCode])
 
   const leaveRoom = useCallback(() => {
+    pendingTapTapCountsRef.current.clear()
     setSyncCode('')
     setHomeSyncCodeInput('')
     navigateTo('/')
@@ -935,6 +1103,7 @@ function App() {
             topDonors={topDonors}
             gifts={enabledGiftConfigs}
             recentEvents={recentEvents}
+            roundStatus={roundStatus}
             audioEnabled={audioEnabled}
             onToggleAudio={() => {
               void toggleAudio()
@@ -1074,6 +1243,9 @@ function App() {
                 gifts={enabledGiftConfigs}
                 disabled={!canTriggerManualGift}
                 onGiftSelect={triggerManualDonation}
+                onExtraInteractionSelect={triggerManualExtraInteraction}
+                quantityMode={simulationQuantityMode}
+                onQuantityModeChange={setSimulationQuantityMode}
               />
             )}
             leaderboardPanel={<Leaderboard entries={leaderboard} />}

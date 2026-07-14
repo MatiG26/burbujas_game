@@ -49,6 +49,14 @@ export const defaultGiftConfigs: GiftConfig[] = [
     action: 'boxing',
     enabled: true,
   },
+  {
+    id: 'lion',
+    giftName: 'Leon',
+    imageUrl: 'https://p16-webcast.tiktokcdn.com/img/maliva/webcast-va/4fb89af2082a290b37d704e20f4fe729~tplv-obj.webp',
+    hpReward: 10000,
+    action: 'lion',
+    enabled: true,
+  },
 ]
 
 export const defaultCanvasSize: CanvasSize = {
@@ -62,9 +70,9 @@ export const minSawRadius = minSawDiameter / 2
 export const maxSawRadius = maxSawDiameter / 2
 export const bladeLength = 22
 export const bladeBase = 10
-export const bladeSpacing = 24
-export const minBladeCount = 14
-export const maxBladeCount = 180
+export const bladeSpacing = 38
+export const minBladeCount = 6
+export const maxBladeCount = 72
 export const maxHpForVisualScale = 42000
 export const driftAcceleration = 62
 export const drag = 0.998

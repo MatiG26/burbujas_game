@@ -23,8 +23,11 @@ import type {
   DonationEvent,
   GiftApplicationResult,
   LeaderboardEntry,
+  RoundStatus,
+  RoundWinnerSummary,
   SawEntity,
   SharedGameState,
+  SharedRoundState,
 } from '../types/game'
 
 interface UseCircularSawGameResult {
@@ -34,6 +37,7 @@ interface UseCircularSawGameResult {
   activeSaws: ActiveSawSummary[]
   recentEvents: DonationEvent[]
   donationHistory: DonationEvent[]
+  roundStatus: RoundStatus
   audioEnabled: boolean
   enableAudio: () => Promise<boolean>
   toggleAudio: () => Promise<boolean>
@@ -74,6 +78,11 @@ const confettiShowcaseDuration = 2000
 const confettiCycles = 2
 const boxingEntryDuration = 950
 const boxingStrikeDamage = 200
+const maxBubbleEntities = 15
+const lionBossHp = 10000
+const lionBossRadius = 142
+const roundDurationMs = 3 * 60 * 1000
+const winnerShowcaseDurationMs = 5000
 
 function playTransientAudio(audioEnabled: boolean, baseAudio: HTMLAudioElement | null) {
   if (!audioEnabled || !baseAudio) {
@@ -120,7 +129,7 @@ function createNewSaw(
     entityType?: 'standard' | 'comment'
     commentText?: string
     touchesRemaining?: number
-    specialMode?: 'confetti' | 'boxing'
+    specialMode?: 'confetti' | 'boxing' | 'lion'
     specialPhase?: 'showcase' | 'plunge'
     specialPhaseStartedAt?: number
     specialModeUntil?: number
@@ -159,6 +168,10 @@ function createNewSaw(
 }
 
 function isSpecialActive(entity: SawEntity, now: number) {
+  if (entity.specialMode === 'lion') {
+    return true
+  }
+
   return (entity.specialModeUntil ?? 0) > now
 }
 
@@ -182,7 +195,7 @@ function normalizeImportedEntity(entity: SawEntity) {
   // Los timestamps de modos especiales vienen del reloj local del dispositivo origen.
   // En otro dispositivo pueden dejar la animacion congelada, asi que se normalizan
   // a una burbuja comun manteniendo posicion, HP y avatar.
-  if (nextEntity.specialMode) {
+  if (nextEntity.specialMode === 'confetti' || nextEntity.specialMode === 'boxing') {
     nextEntity.specialMode = undefined
     nextEntity.specialPhase = undefined
     nextEntity.specialPhaseStartedAt = undefined
@@ -190,6 +203,10 @@ function normalizeImportedEntity(entity: SawEntity) {
     nextEntity.invulnerableUntil = undefined
     nextEntity.vx = nextEntity.vx || (Math.random() - 0.5) * 180
     nextEntity.vy = nextEntity.vy || (Math.random() - 0.5) * 180
+  }
+
+  if (nextEntity.specialMode === 'lion') {
+    nextEntity.radius = lionBossRadius
   }
 
   nextEntity.isTouching = false
@@ -203,6 +220,16 @@ function getConfettiSpinDuration(entity: SawEntity) {
 function updateSpecialMotion(entity: SawEntity, dt: number, now: number, size: CanvasSize) {
   if (!isSpecialActive(entity, now) || !entity.specialMode) {
     return false
+  }
+
+  if (entity.specialMode === 'lion') {
+    entity.rotation += dt * 0.35
+    entity.x = size.width * 0.5
+    entity.y = size.height * 0.54
+    entity.vx = 0
+    entity.vy = 0
+    entity.radius = lionBossRadius
+    return true
   }
 
   if (entity.specialMode === 'confetti') {
@@ -289,13 +316,16 @@ function drawSaw(
   ctx: CanvasRenderingContext2D,
   entity: SawEntity,
   imageCache: Map<string, HTMLImageElement>,
+  size: CanvasSize,
   now: number,
 ) {
   const image = ensureAvatar(imageCache, entity.avatarUrl)
-  const bodyRadius = entity.entityType === 'comment'
-    ? Math.max(52, entity.radius - bladeLength)
-    : Math.max(34, entity.radius - bladeLength)
   const specialActive = isSpecialActive(entity, now)
+  const renderScale = size.width > size.height ? 0.7 : 0.84
+  const visualRadius = entity.radius * renderScale
+  const bodyRadius = entity.entityType === 'comment'
+    ? Math.max(42, visualRadius - bladeLength)
+    : Math.max(28, visualRadius - bladeLength)
 
   ctx.save()
   ctx.translate(entity.x, entity.y)
@@ -326,6 +356,17 @@ function drawSaw(
     ctx.fill()
   }
 
+  if (entity.specialMode === 'lion') {
+    const glowGradient = ctx.createRadialGradient(0, 0, bodyRadius * 0.2, 0, 0, bodyRadius * 2.1)
+    glowGradient.addColorStop(0, 'rgba(250, 204, 21, 0.88)')
+    glowGradient.addColorStop(0.58, 'rgba(234, 179, 8, 0.34)')
+    glowGradient.addColorStop(1, 'rgba(250, 204, 21, 0)')
+    ctx.fillStyle = glowGradient
+    ctx.beginPath()
+    ctx.arc(0, 0, bodyRadius * 2.1, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
   if (entity.entityType === 'standard') {
     ctx.save()
     ctx.rotate(entity.rotation)
@@ -334,15 +375,16 @@ function drawSaw(
       const angle = (index / bladeCount) * Math.PI * 2
       ctx.save()
       ctx.rotate(angle)
-      const gradient = ctx.createLinearGradient(bodyRadius - 10, 0, entity.radius + 8, 0)
+      const bladeOuterRadius = visualRadius
+      const gradient = ctx.createLinearGradient(bodyRadius - 10, 0, bladeOuterRadius + 8, 0)
       gradient.addColorStop(0, '#d7dee7')
       gradient.addColorStop(1, '#7b8794')
       ctx.fillStyle = gradient
       ctx.beginPath()
       ctx.moveTo(bodyRadius - 6, 0)
-      ctx.lineTo(entity.radius + 4, -5)
-      ctx.lineTo(entity.radius + 10, 0)
-      ctx.lineTo(entity.radius + 4, 5)
+      ctx.lineTo(bladeOuterRadius + 4, -5)
+      ctx.lineTo(bladeOuterRadius + 10, 0)
+      ctx.lineTo(bladeOuterRadius + 4, 5)
       ctx.closePath()
       ctx.fill()
       ctx.restore()
@@ -370,7 +412,7 @@ function drawSaw(
     ctx.fill()
   }
 
-  ctx.lineWidth = 10
+  ctx.lineWidth = size.width > size.height ? 8 : 10
   ctx.strokeStyle = entity.isTouching ? 'rgba(239, 68, 68, 0.95)' : 'rgba(255,255,255,0.15)'
   ctx.beginPath()
   ctx.arc(0, 0, bodyRadius, 0, Math.PI * 2)
@@ -382,6 +424,17 @@ function drawSaw(
   ctx.font = `600 ${Math.max(11, bodyRadius * 0.16)}px sans-serif`
   ctx.textAlign = 'center'
   ctx.fillText(entity.isPrimary ? entity.username : `${entity.username} II`, 0, -bodyRadius * 0.72)
+
+  if (entity.specialMode === 'lion') {
+    ctx.save()
+    ctx.shadowBlur = 30
+    ctx.shadowColor = 'rgba(250, 204, 21, 0.9)'
+    ctx.fillStyle = 'rgba(255, 224, 130, 0.98)'
+    ctx.font = `900 ${Math.max(26, bodyRadius * 0.36)}px sans-serif`
+    ctx.textBaseline = 'middle'
+    ctx.fillText(entity.username, 0, bodyRadius + Math.max(54, bodyRadius * 0.9))
+    ctx.restore()
+  }
 
   if (entity.entityType === 'comment') {
     ctx.fillStyle = 'rgba(255,255,255,0.96)'
@@ -442,10 +495,11 @@ function drawShowcaseConfetti(
   ctx: CanvasRenderingContext2D,
   entities: SawEntity[],
   imageCache: Map<string, HTMLImageElement>,
+  size: CanvasSize,
   now: number,
 ) {
   for (const entity of entities) {
-    drawSaw(ctx, entity, imageCache, now)
+    drawSaw(ctx, entity, imageCache, size, now)
   }
 }
 
@@ -577,6 +631,42 @@ function updateLeaderboardSnapshot(
   })
 }
 
+function cloneWinnerSummary(summary: RoundWinnerSummary | null) {
+  return summary ? { ...summary } : null
+}
+
+function getRoundParticipants(entityMap: Map<string, SawEntity>) {
+  return [...entityMap.values()].filter((entity) => entity.entityType === 'standard' && entity.hp > 0)
+}
+
+function evictFirstCommentEntity(entityMap: Map<string, SawEntity>) {
+  for (const [entityId, entity] of entityMap.entries()) {
+    if (entity.entityType === 'comment') {
+      entityMap.delete(entityId)
+      return true
+    }
+  }
+
+  return false
+}
+
+function addEntityRespectingLimit(entityMap: Map<string, SawEntity>, entity: SawEntity) {
+  if (entityMap.size >= maxBubbleEntities && !evictFirstCommentEntity(entityMap)) {
+    return false
+  }
+
+  entityMap.set(entity.id, entity)
+  return true
+}
+
+function trimEntitiesToLimit(entityMap: Map<string, SawEntity>) {
+  while (entityMap.size > maxBubbleEntities) {
+    if (!evictFirstCommentEntity(entityMap)) {
+      break
+    }
+  }
+}
+
 export function useCircularSawGame(): UseCircularSawGameResult {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const animationFrameRef = useRef<number | null>(null)
@@ -594,12 +684,155 @@ export function useCircularSawGame(): UseCircularSawGameResult {
   const boxingBellAudioRef = useRef<HTMLAudioElement | null>(null)
   const confettiAudioRef = useRef<HTMLAudioElement | null>(null)
   const audioEnabledRef = useRef(false)
+  const roundStartedAtRef = useRef<number | null>(null)
+  const roundEndsAtRef = useRef<number | null>(null)
+  const winnerShowcaseUntilRef = useRef<number | null>(null)
+  const winnerEntityIdRef = useRef<string | null>(null)
+  const lastWinnerRef = useRef<RoundWinnerSummary | null>(null)
+  const showcaseWinnerRef = useRef<RoundWinnerSummary | null>(null)
   const [canvasSize, setCanvasSize] = useState(defaultCanvasSize)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [activeSaws, setActiveSaws] = useState<ActiveSawSummary[]>([])
   const [recentEvents, setRecentEvents] = useState<DonationEvent[]>([])
   const [donationHistory, setDonationHistory] = useState<DonationEvent[]>([])
+  const [roundStatus, setRoundStatus] = useState<RoundStatus>({
+    isActive: false,
+    participantCount: 0,
+    remainingMs: roundDurationMs,
+    startedAt: null,
+    lastWinner: null,
+    showcaseWinner: null,
+  })
   const [audioEnabled, setAudioEnabled] = useState(false)
+
+  function buildRoundStatusSnapshot(now: number): RoundStatus {
+    const roundEndsAt = roundEndsAtRef.current
+    return {
+      isActive: Boolean(roundStartedAtRef.current && roundEndsAt && roundEndsAt > now),
+      participantCount: getRoundParticipants(entitiesRef.current).length,
+      remainingMs: roundEndsAt ? Math.max(0, roundEndsAt - now) : roundDurationMs,
+      startedAt: roundStartedAtRef.current,
+      lastWinner: cloneWinnerSummary(lastWinnerRef.current),
+      showcaseWinner:
+        winnerShowcaseUntilRef.current && winnerShowcaseUntilRef.current > now
+          ? cloneWinnerSummary(showcaseWinnerRef.current)
+          : null,
+    }
+  }
+
+  function buildSharedRoundState(): SharedRoundState {
+    return {
+      startedAt: roundStartedAtRef.current,
+      endsAt: roundEndsAtRef.current,
+      winnerShowcaseUntil: winnerShowcaseUntilRef.current,
+      winnerEntityId: winnerEntityIdRef.current,
+      lastWinner: cloneWinnerSummary(lastWinnerRef.current),
+      showcaseWinner: cloneWinnerSummary(showcaseWinnerRef.current),
+    }
+  }
+
+  function applySharedRoundState(roundState?: SharedRoundState) {
+    roundStartedAtRef.current = roundState?.startedAt ?? null
+    roundEndsAtRef.current = roundState?.endsAt ?? null
+    winnerShowcaseUntilRef.current = roundState?.winnerShowcaseUntil ?? null
+    winnerEntityIdRef.current = roundState?.winnerEntityId ?? null
+    lastWinnerRef.current = cloneWinnerSummary(roundState?.lastWinner ?? null)
+    showcaseWinnerRef.current = cloneWinnerSummary(roundState?.showcaseWinner ?? null)
+  }
+
+  function startRound(now: number) {
+    roundStartedAtRef.current = now
+    roundEndsAtRef.current = now + roundDurationMs
+    winnerShowcaseUntilRef.current = null
+    winnerEntityIdRef.current = null
+    showcaseWinnerRef.current = null
+  }
+
+  function resetArenaForNextRound() {
+    entitiesRef.current.clear()
+    despawnEffectsRef.current = []
+    needleBurstEffectsRef.current = []
+    screenOverlayEffectsRef.current = []
+    leaderboardRef.current.clear()
+    roundStartedAtRef.current = null
+    roundEndsAtRef.current = null
+    winnerShowcaseUntilRef.current = null
+    winnerEntityIdRef.current = null
+    showcaseWinnerRef.current = null
+    lastPublishRef.current = 0
+    setLeaderboard([])
+    setActiveSaws([])
+    setRecentEvents([])
+  }
+
+  function beginWinnerShowcase(winner: SawEntity, now: number) {
+    const survivedMs = roundStartedAtRef.current ? Math.max(0, now - roundStartedAtRef.current) : roundDurationMs
+    const winnerSummary: RoundWinnerSummary = {
+      playerId: winner.playerId,
+      username: winner.username,
+      avatarUrl: winner.avatarUrl,
+      hp: winner.hp,
+      survivedMs,
+      wonAt: now,
+    }
+
+    winner.specialMode = undefined
+    winner.specialPhase = undefined
+    winner.specialPhaseStartedAt = undefined
+    winner.specialModeUntil = undefined
+    winner.invulnerableUntil = undefined
+    winner.isPrimary = true
+    winner.x = canvasSizeRef.current.width * 0.5
+    winner.y = canvasSizeRef.current.height * 0.54
+    winner.vx = 0
+    winner.vy = 0
+    winner.radius = Math.min(
+      Math.max(hpToRadius(winner.hp) * 1.85, 120),
+      Math.min(canvasSizeRef.current.width, canvasSizeRef.current.height) * 0.28,
+    )
+
+    entitiesRef.current = new Map([[winner.id, winner]])
+    leaderboardRef.current = new Map([
+      [winner.playerId, {
+        id: winner.playerId,
+        username: winner.username,
+        avatarUrl: winner.avatarUrl,
+        totalDonated: leaderboardRef.current.get(winner.playerId)?.totalDonated ?? winner.hp,
+        currentHp: winner.hp,
+        sawCount: 1,
+        isActive: true,
+      }],
+    ])
+
+    roundStartedAtRef.current = null
+    roundEndsAtRef.current = null
+    winnerEntityIdRef.current = winner.id
+    winnerShowcaseUntilRef.current = now + winnerShowcaseDurationMs
+    showcaseWinnerRef.current = winnerSummary
+    lastWinnerRef.current = winnerSummary
+  }
+
+  function finalizeRound(now: number) {
+    const participants = getRoundParticipants(entitiesRef.current)
+    if (participants.length === 0) {
+      roundStartedAtRef.current = null
+      roundEndsAtRef.current = null
+      showcaseWinnerRef.current = null
+      winnerShowcaseUntilRef.current = null
+      winnerEntityIdRef.current = null
+      return
+    }
+
+    participants.sort((left, right) => {
+      if (right.hp !== left.hp) {
+        return right.hp - left.hp
+      }
+
+      return right.maxHp - left.maxHp
+    })
+
+    beginWinnerShowcase(participants[0], now)
+  }
 
   async function enableAudio() {
     try {
@@ -623,7 +856,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     return enableAudio()
   }
 
-  function publishSnapshots() {
+  function publishSnapshots(snapshotNow = Date.now()) {
     const leaderboardSnapshot = updateLeaderboardSnapshot(
       leaderboardRef.current,
       entitiesRef.current,
@@ -647,6 +880,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
           isPrimary: entity.isPrimary,
         })),
     )
+    setRoundStatus(buildRoundStatusSnapshot(snapshotNow))
   }
 
   function resetGame() {
@@ -657,10 +891,24 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     leaderboardRef.current.clear()
     lastPublishRef.current = 0
     lastTimeRef.current = null
+    roundStartedAtRef.current = null
+    roundEndsAtRef.current = null
+    winnerShowcaseUntilRef.current = null
+    winnerEntityIdRef.current = null
+    lastWinnerRef.current = null
+    showcaseWinnerRef.current = null
     setLeaderboard([])
     setActiveSaws([])
     setRecentEvents([])
     setDonationHistory([])
+    setRoundStatus({
+      isActive: false,
+      participantCount: 0,
+      remainingMs: roundDurationMs,
+      startedAt: null,
+      lastWinner: null,
+      showcaseWinner: null,
+    })
   }
 
   function getSharedGameState(): SharedGameState {
@@ -669,6 +917,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
       leaderboard: [...leaderboardRef.current.values()].map((entry) => ({ ...entry })),
       recentEvents: recentEvents.map((event) => ({ ...event })),
       donationHistory: donationHistory.map((event) => ({ ...event })),
+      roundState: buildSharedRoundState(),
     }
   }
 
@@ -678,6 +927,8 @@ export function useCircularSawGame(): UseCircularSawGameResult {
       return [normalizedEntity.id, normalizedEntity]
     }))
     const nextLeaderboard = new Map(state.leaderboard.map((entry) => [entry.id, { ...entry }]))
+
+    trimEntitiesToLimit(nextEntities)
 
     for (const entry of nextLeaderboard.values()) {
       if (!entry.isActive || entry.currentHp <= 0) {
@@ -701,11 +952,12 @@ export function useCircularSawGame(): UseCircularSawGameResult {
         true,
         Math.random() * 360,
       )
-      nextEntities.set(fallbackEntity.id, fallbackEntity)
+      addEntityRespectingLimit(nextEntities, fallbackEntity)
     }
 
     entitiesRef.current = nextEntities
     leaderboardRef.current = nextLeaderboard
+  applySharedRoundState(state.roundState)
     setRecentEvents(state.recentEvents.map((event) => ({ ...event })))
     setDonationHistory(state.donationHistory.map((event) => ({ ...event })))
     publishSnapshots()
@@ -730,7 +982,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
   }
 
   function splitPrimarySaw(primary: SawEntity) {
-    if (primary.hp <= 1) {
+    if (primary.hp <= 1 || primary.specialMode === 'lion') {
       return false
     }
 
@@ -739,10 +991,6 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     if (rightHp <= 0) {
       return false
     }
-
-    primary.hp = leftHp
-    primary.maxHp = Math.max(primary.maxHp, leftHp)
-    primary.radius = hpToRadius(primary.hp)
 
     const clone = createNewSaw(
       primary.playerId,
@@ -753,13 +1001,22 @@ export function useCircularSawGame(): UseCircularSawGameResult {
       false,
       primary.hue + 28,
     )
-    clone.x = clamp(primary.x + primary.radius * 0.55, clone.radius, canvasSizeRef.current.width - clone.radius)
-    clone.y = clamp(primary.y + primary.radius * 0.35, clone.radius, canvasSizeRef.current.height - clone.radius)
+
+    const nextPrimaryRadius = hpToRadius(leftHp)
+    clone.x = clamp(primary.x + nextPrimaryRadius * 0.55, clone.radius, canvasSizeRef.current.width - clone.radius)
+    clone.y = clamp(primary.y + nextPrimaryRadius * 0.35, clone.radius, canvasSizeRef.current.height - clone.radius)
     clone.vx = primary.vx + splitImpulse
     clone.vy = primary.vy - splitImpulse * 0.35
+
+    if (!addEntityRespectingLimit(entitiesRef.current, clone)) {
+      return false
+    }
+
+    primary.hp = leftHp
+    primary.maxHp = Math.max(primary.maxHp, leftHp)
+    primary.radius = nextPrimaryRadius
     primary.vx -= splitImpulse * 0.6
     primary.vy += splitImpulse * 0.25
-    entitiesRef.current.set(clone.id, clone)
     return true
   }
 
@@ -790,6 +1047,29 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     entity.y = canvasSizeRef.current.height * 0.32
     entity.vx = 0
     entity.vy = 0
+  }
+
+  function applyLionBossMode(entity: SawEntity) {
+    entity.specialMode = 'lion'
+    entity.specialPhase = undefined
+    entity.specialPhaseStartedAt = undefined
+    entity.specialModeUntil = undefined
+    entity.invulnerableUntil = undefined
+    entity.hp = lionBossHp
+    entity.maxHp = lionBossHp
+    entity.radius = lionBossRadius
+    entity.x = canvasSizeRef.current.width * 0.5
+    entity.y = canvasSizeRef.current.height * 0.54
+    entity.vx = 0
+    entity.vy = 0
+  }
+
+  function removeExistingLionBoss(nextPlayerId: string) {
+    for (const [entityId, entity] of entitiesRef.current.entries()) {
+      if (entity.specialMode === 'lion' && entity.playerId !== nextPlayerId) {
+        entitiesRef.current.delete(entityId)
+      }
+    }
   }
 
   function applyBoxingStrike(playerId: string, donorName: string, quantity: number, now: number) {
@@ -868,10 +1148,12 @@ export function useCircularSawGame(): UseCircularSawGameResult {
           touchesRemaining: 3,
         },
       )
-      entitiesRef.current.set(commentEntity.id, commentEntity)
+      if (!addEntityRespectingLimit(entitiesRef.current, commentEntity)) {
+        return { applied: false, reason: 'Limite de burbujas alcanzado' }
+      }
     } else {
       if (!primary) {
-        primary = createNewSaw(
+        const newPrimary = createNewSaw(
           playerId,
           normalizedUsername,
           event.avatarUrl,
@@ -880,27 +1162,37 @@ export function useCircularSawGame(): UseCircularSawGameResult {
           true,
           Math.random() * 360,
         )
-        entitiesRef.current.set(primary.id, primary)
+        if (!addEntityRespectingLimit(entitiesRef.current, newPrimary)) {
+          return { applied: false, reason: 'Limite de burbujas alcanzado' }
+        }
+        primary = newPrimary
       } else {
         primary.username = normalizedUsername
         primary.avatarUrl = event.avatarUrl.trim() || primary.avatarUrl
-        primary.hp += event.hpDelta
-        primary.maxHp = Math.max(primary.maxHp, primary.hp)
-        primary.radius = hpToRadius(primary.hp)
+        if (primary.specialMode !== 'lion') {
+          primary.hp += event.hpDelta
+          primary.maxHp = Math.max(primary.maxHp, primary.hp)
+          primary.radius = hpToRadius(primary.hp)
+        }
         primary.vx += (Math.random() - 0.5) * 120
         primary.vy += (Math.random() - 0.5) * 120
       }
 
       if (primary) {
-        if (event.action === 'confetti') {
+        if (event.action === 'confetti' && primary.specialMode !== 'lion') {
           applyConfettiMode(primary, specialNow)
           playTransientAudio(audioEnabledRef.current, confettiAudioRef.current)
         }
 
-        if (event.action === 'boxing') {
+        if (event.action === 'boxing' && primary.specialMode !== 'lion') {
           applyBoxingMode(primary, specialNow)
           applyBoxingStrike(playerId, normalizedUsername, event.quantity, specialNow)
           playTransientAudio(audioEnabledRef.current, boxingBellAudioRef.current)
+        }
+
+        if (event.action === 'lion') {
+          removeExistingLionBoss(playerId)
+          applyLionBossMode(primary)
         }
       }
     }
@@ -991,8 +1283,11 @@ export function useCircularSawGame(): UseCircularSawGameResult {
 
     const resize = () => {
       const bounds = canvas.getBoundingClientRect()
-      const width = Math.max(420, Math.floor(bounds.width || defaultCanvasSize.width))
-      const height = Math.max(420, Math.floor(bounds.height || defaultCanvasSize.height))
+      const measuredWidth = Math.floor(bounds.width || defaultCanvasSize.width)
+      const measuredHeight = Math.floor(bounds.height || defaultCanvasSize.height)
+      const isLandscapeCanvas = measuredWidth > measuredHeight
+      const width = Math.max(isLandscapeCanvas ? 320 : 420, measuredWidth)
+      const height = Math.max(isLandscapeCanvas ? 220 : 420, measuredHeight)
       const devicePixelRatio = window.devicePixelRatio || 1
 
       dprRef.current = devicePixelRatio
@@ -1012,11 +1307,25 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     resizeObserver.observe(canvas)
 
     const tick = (time: number) => {
+      const wallNow = Date.now()
       const dt = Math.min(0.033, ((time - (lastTimeRef.current ?? time)) || 16.7) / 1000)
       lastTimeRef.current = time
 
       for (const entity of entitiesRef.current.values()) {
         entity.isTouching = false
+
+        const isWinnerShowcaseEntity = winnerEntityIdRef.current === entity.id
+          && Boolean(winnerShowcaseUntilRef.current && winnerShowcaseUntilRef.current > wallNow)
+
+        if (isWinnerShowcaseEntity) {
+          entity.x = canvasSizeRef.current.width * 0.5
+          entity.y = canvasSizeRef.current.height * 0.54
+          entity.vx = 0
+          entity.vy = 0
+          entity.rotation += dt * 0.45
+          containInsideCanvas(entity, canvasSizeRef.current)
+          continue
+        }
 
         if (entity.specialMode === 'confetti' && entity.specialPhase === 'showcase') {
           const showcaseFinished = time - (entity.specialPhaseStartedAt ?? time) >= confettiShowcaseDuration
@@ -1105,7 +1414,11 @@ export function useCircularSawGame(): UseCircularSawGameResult {
 
         if (entity.hp > 0) {
           entity.maxHp = Math.max(entity.maxHp, entity.hp)
-          entity.radius = hpToRadius(entity.hp)
+          if (entity.specialMode !== 'lion') {
+            entity.radius = hpToRadius(entity.hp)
+          } else {
+            entity.radius = lionBossRadius
+          }
           continue
         }
 
@@ -1121,6 +1434,14 @@ export function useCircularSawGame(): UseCircularSawGameResult {
           duration: 280,
         })
         playBoomSound()
+      }
+
+      if (winnerShowcaseUntilRef.current && winnerShowcaseUntilRef.current <= wallNow) {
+        resetArenaForNextRound()
+      } else if (roundEndsAtRef.current && wallNow >= roundEndsAtRef.current) {
+        finalizeRound(wallNow)
+      } else if (!roundStartedAtRef.current && !winnerShowcaseUntilRef.current && getRoundParticipants(entitiesRef.current).length > 2) {
+        startRound(wallNow)
       }
 
       despawnEffectsRef.current = despawnEffectsRef.current.filter(
@@ -1145,15 +1466,15 @@ export function useCircularSawGame(): UseCircularSawGameResult {
           continue
         }
 
-        drawSaw(context, entity, avatarCacheRef.current, time)
+        drawSaw(context, entity, avatarCacheRef.current, canvasSizeRef.current, time)
       }
-      drawShowcaseConfetti(context, showcaseConfettiEntities, avatarCacheRef.current, time)
+      drawShowcaseConfetti(context, showcaseConfettiEntities, avatarCacheRef.current, canvasSizeRef.current, time)
       drawNeedleBurstEffects(context, needleBurstEffectsRef.current, time)
       drawDespawnEffects(context, despawnEffectsRef.current, time)
       drawScreenOverlayEffects(context, canvasSizeRef.current, screenOverlayEffectsRef.current, time)
 
       if (time - lastPublishRef.current > 120) {
-        publishSnapshots()
+        publishSnapshots(wallNow)
         lastPublishRef.current = time
       }
 
@@ -1183,6 +1504,7 @@ export function useCircularSawGame(): UseCircularSawGameResult {
     activeSaws,
     recentEvents,
     donationHistory,
+    roundStatus,
     audioEnabled,
     enableAudio,
     toggleAudio,
